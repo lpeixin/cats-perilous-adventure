@@ -1,0 +1,36 @@
+# --- macOS junk ---
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+Icon?
+
+# --- Windows junk ---
+Thumbs.db
+Desktop.ini
+
+# --- Node / npm ---
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.npm/
+
+# --- Vendored Phaser: auto-synced into vendor/ by the postinstall script,
+#     do not commit (see scripts/sync-phaser.cjs) ---
+vendor/
+
+# --- Electron builder output ---
+dist/
+
+# --- Editors / IDE ---
+.vscode/
+.idea/
+*.swp
+
+# --- Env & secrets ---
+.env
+.env.*
+
+# --- Python (tools/gen_assets.py, tools/build_levels.py) ---
+__pycache__/
+*.pyc

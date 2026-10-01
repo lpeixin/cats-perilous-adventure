@@ -1,0 +1,51 @@
+{
+  "name": "cat-mario",
+  "version": "1.0.0",
+  "private": true,
+  "description": "《猫咪历险记》Cat's Perilous Adventure — 原创陷阱式恶搞平台跳跃游戏",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "postinstall": "node scripts/sync-phaser.cjs",
+    "dev": "node scripts/serve.cjs",
+    "start": "node scripts/serve.cjs",
+    "sync:phaser": "node scripts/sync-phaser.cjs",
+    "gen:assets": "python3 tools/gen_assets.py",
+    "gen:levels": "python3 tools/build_levels.py",
+    "validate": "node tools/validate-levels.mjs",
+    "test": "node tools/validate-levels.mjs",
+    "smoke": "node tools/run-smoke.mjs",
+    "traps": "node tools/trap-report.mjs",
+    "electron": "electron .",
+    "build:mac": "electron-builder --mac"
+  },
+  "dependencies": {
+    "phaser": "^3.80.1"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.catmario.perilous",
+    "productName": "Cat's Perilous Adventure",
+    "files": [
+      "index.html",
+      "src/**/*",
+      "assets/**/*",
+      "vendor/**/*",
+      "electron/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "category": "public.app-category.games",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "assets/ui/appicon.png"
+    }
+  }
+}

@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<!-- 本页位于 tools/ 子目录，而游戏的资源路径都是相对**项目根目录**的，
+     所以这里把 base 指到根，才能正确加载 assets/ 与 src/。 -->
+<base href="/">
+<title>猫咪历险记 · 冒烟测试</title>
+<style>
+  body { font-family: ui-monospace, Menlo, monospace; background:#1c1618; color:#ddd; margin:0; padding:16px; }
+  #game-root { position: fixed; left: 0; top: 0; width: 960px; height: 540px; opacity: .02; pointer-events: none; }
+  pre { font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div id="game-root"></div>
+<pre id="report">RUNNING</pre>
+
+<script>
+  window.__ERRS = [];
+  window.addEventListener('error', (e) => {
+    window.__ERRS.push('ERROR: ' + e.message + ' @ ' + (e.filename || '?') + ':' + (e.lineno || 0));
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    window.__ERRS.push('REJECT: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+  });
+  const _ce = console.error.bind(console);
+  console.error = (...a) => { window.__ERRS.push('CONSOLE.ERROR: ' + a.map(String).join(' ')); _ce(...a); };
+  const _cw = console.warn.bind(console);
+  console.warn = (...a) => { window.__ERRS.push('WARN: ' + a.map(String).join(' ')); _cw(...a); };
+</script>
+
+<script src="/vendor/phaser.min.js"></script>
+<script type="module" src="/src/main.js"></script>
+
+<script>
+const results = [];
+
+/** 每记一条就刷新一次报告 DOM —— 这样驱动器能实时看到进度，卡住也知道卡在哪 */
+function renderReport(final) {
+  const passed = results.filter((r) => r.pass).length;
+  const lines = ['===SMOKE-BEGIN===', 'CHECKS: ' + passed + '/' + results.length + ' passed'];
+  for (const r of results) {
+    lines.push((r.pass ? '  PASS  ' : '  FAIL  ') + r.name
+      + (r.detail ? '  [' + r.detail + ']' : ''));
+  }
+  if (final) {
+    const errs = window.__ERRS.filter((e) => !/WARN: \[save\]/.test(e));
+    lines.push('ERRORS: ' + errs.length);
+    for (const e of errs) lines.push('  ' + e);
+    lines.push('RESULT: ' + (results.every((r) => r.pass) && errs.length === 0
+      ? 'ALL-GREEN' : 'PROBLEMS'));
+  }
+  lines.push('===SMOKE-END===');
+  document.getElementById('report').textContent = lines.join('\n');
+}
+
+const rec = (name, pass, detail) => {
+  results.push({ name, pass: !!pass, detail: detail === undefined ? '' : String(detail) });
+  renderReport(false);
+};
+
+let GAME = null;
+let VT = 0;
+const FRAME_MS = 1000 / 60;
+const TILE = 48;
+
+/** 全程记录每一次死亡：位置 + 调用栈，方便定位"到底是谁杀的猫" */
+const deathLog = [];
+let hookedCat = null;
+function hookDeath(c) {
+  if (!c || hookedCat === c) return;
+  hookedCat = c;
+  const orig = c.die.bind(c);
+  c.die = function () {
+    const st = (new Error().stack || '').split('\n').slice(1, 4)
+      .map((s) => s.trim().replace(/^at\s*/, '').replace(/^https?:\/\/[^/]+\//, ''))
+      .join(' ← ');
+    deathLog.push('f' + Math.round(VT / FRAME_MS)
+      + ' @(' + this.x.toFixed(0) + ',' + this.y.toFixed(0) + ')'
+      + ' vy=' + (this.body ? this.body.velocity.y.toFixed(0) : '?')
+      + ' ← ' + st);
+    return orig();
+  };
+}
+
+/**
+ * 接管 tween 的时钟。
+ * 这一点非常关键：Phaser 的 TweenManager.getDelta() 是用 `Date.now()`（真实墙钟）
+ * 算 delta 的，而不是我们注入给 scene.update() 的帧 delta。
+ * 无头 Chrome 里我们"手动驱动"主循环时，虚拟帧飞快、真实时间几乎没走，
+ * 于是所有 tween 都几乎不推进 —— 表现就是"云朵的抖动 tween 永远走不完，
+ * 所以永远不砸下来"、"传送带沉到一半卡住"。
+ *
+ * 注意：这里**不能**直接改写 window.Date.now —— Chrome 的 --virtual-time-budget
+ * 自己就靠改写 Date.now 来实现虚拟时钟，我们再覆盖会把它的时钟搞坏，
+ * 导致 dump 一直等不到，测试跑不完。所以只精准替换这一个方法。
+ */
+let tweenClockPatched = false;
+function patchTweenClock() {
+  const TM = Phaser.Tweens && Phaser.Tweens.TweenManager;
+  if (!TM || !TM.prototype || typeof TM.prototype.getDelta !== 'function') return false;
+  TM.prototype.getDelta = function () {
+    // 每帧固定推进一个 16.67ms 的步长，和 scene.update() 注入的 delta 完全一致
+    this.time += FRAME_MS / 1000;
+    return FRAME_MS;
+  };
+  tweenClockPatched = true;
+  return true;
+}
+
+/**
+ * 推进游戏。
+ * 无头 Chrome 在 --virtual-time-budget 模式下，setTimeout 会瞬间跳过、
+ * 而 requestAnimationFrame 仍按真实时间跑，两者不同步会让测试全部失真。
+ * 因此这里完全接管主循环：直接调用 SceneManager.update()，每帧 delta 固定
+ * 16.67ms —— 测试完全确定性，且跳过渲染，跑得很快。
+ */
+async function wait(ms) {
+  const n = Math.max(1, Math.round(ms / FRAME_MS));
+  for (let i = 0; i < n; i++) {
+    VT += FRAME_MS;
+    try { GAME.scene.update(VT, FRAME_MS); }
+    catch (e) { window.__ERRS.push('STEP-THROW: ' + (e && e.message)); break; }
+    if (i % 16 === 15) await new Promise((r) => setTimeout(r, 0));
+  }
+}
+
+/** 一直推进到条件成立（或超时），比"固定等 N 毫秒"稳得多 */
+async function until(pred, maxMs = 3000) {
+  const n = Math.round(maxMs / FRAME_MS);
+  for (let i = 0; i < n; i++) {
+    if (pred()) return true;
+    await wait(FRAME_MS);
+    // 必须让出事件循环：否则同步连跑会把图片解码 / 网络回调全部饿死
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  return !!pred();
+}
+
+const S = () => GAME.scene.getScene('Level');
+
+/** 把猫从"意外死亡"里救回来，避免后续测试被延迟重开打乱 */
+function rescue() {
+  const L = S();
+  if (!L || !L.cat) return;
+  L.time.removeAllEvents();
+  L.isRestarting = false;
+  const c = L.cat;
+  c.isDead = false;
+  c.body.checkCollision.none = false;
+  c.setAlpha(1); c.clearTint();
+  c.crouching = false;
+  c.applyForm('small');
+  c.refreshBody();
+  c.invulnUntil = 0; c.starUntil = 0; c.isInvincible = false;
+  c.setPosition(L.level.spawn.x * 48 + 24, (L.level.spawn.y + 1) * 48);
+  c.body.setVelocity(0, 0);
+}
+
+function finish() {
+  if (document.title === 'SMOKE-DONE') return;
+  renderReport(true);
+  document.title = 'SMOKE-DONE';
+}
+
+// 兜底看门狗：万一某段卡住，也不至于让驱动器一直等到超时
+setTimeout(() => {
+  if (document.title !== 'SMOKE-DONE') {
+    window.__ERRS.push('WATCHDOG: 测试超过 150 秒仍未结束，已强制收尾');
+    finish();
+  }
+}, 150000);
+
+(async function run() {
+  try {
+    for (let i = 0; i < 120 && !window.__CAT_MARIO__; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    GAME = window.__CAT_MARIO__;
+    rec('Phaser.Game 已创建', !!GAME);
+    if (!GAME) return finish();
+    rec('Phaser 版本 ' + Phaser.VERSION, true);
+
+    GAME.loop.sleep();   // 完全由测试接管主循环
+    rec('测试驱动方式', true, '手动驱动 SceneManager.update()，每帧固定 16.67ms');
+
+    const clockOK = patchTweenClock();
+    rec('tween 时钟已接管（否则云朵/传送带的 tween 不会推进）', clockOK,
+        clockOK ? 'TweenManager.getDelta 已替换为固定步长' : '补丁失败：getDelta 不存在');
+
+    // ---- 0. 手动把 Preload 跑完 ----
+    const preloadOK = await until(() => {
+      const m = GAME.scene.getScene('Menu');
+      return m && m.scene.isActive();
+    }, 8000);
+    rec('Preload → Menu 场景切换成功', preloadOK,
+        preloadOK ? '推进 ' + Math.round(VT / FRAME_MS) + ' 帧' : '超时');
+
+    // ---- 1. 资源 ----
+    const need = ['cat_small', 'cat_big', 'enemy_yarn', 'enemy_crow', 'enemy_fish',
+      'enemy_mushroom', 'item_goldfish', 'item_star', 'item_can', 'goal_pole',
+      'goal_flagfish', 'ground_top', 'ground_fill', 'brick', 'stone', 'question',
+      'question_used', 'pipe_tl', 'pipe_tr', 'pipe_bl', 'pipe_br', 'crumble',
+      'crumble_ground', 'spike', 'lava', 'water', 'invisible', 'conveyor',
+      'bg_sky', 'bg_far', 'bg_mid', 'cloud_soft', 'cloud_evil', 'sun_soft',
+      'sun_evil', 'panel', 'icon_coin', 'icon_skull', 'icon_cat', 'icon_clock'];
+    const missing = need.filter((k) => !GAME.textures.exists(k));
+    rec('全部 ' + need.length + ' 个纹理已加载', missing.length === 0, missing.join(',') || '无缺失');
+
+    const needAnims = ['small-idle', 'small-walk', 'small-jump', 'small-fall',
+      'big-idle', 'big-walk', 'big-crouch', 'big-slide', 'yarn-roll', 'crow-fly',
+      'fish-swim', 'mush-idle', 'mush-pounce', 'goldfish-swim', 'star-spin',
+      'can-shine', 'flag-wave', 'lava-flow', 'water-flow', 'question-shine'];
+    const missAnim = needAnims.filter((k) => !GAME.anims.exists(k));
+    rec('动画注册完整', missAnim.length === 0, missAnim.join(',') || needAnims.length + ' 条');
+
+    const lvMissing = ['level1', 'level2', 'level3'].filter((k) => !GAME.cache.json.exists(k));
+    rec('三个关卡 JSON 已加载', lvMissing.length === 0, lvMissing.join(',') || '3 个');
+
+    // ---- 2. 进入第一关 ----
+    let cat = null;
+    GAME.scene.stop('Menu');
+    GAME.scene.start('Level', { levelId: 1 });
+    await wait(600);
+
+    let L = S();
+    rec('LevelScene 已激活', L && L.scene.isActive());
+    if (!L || !L.level) return finish();
+
+    rec('关卡地形已构建', L.level.tiles.length > 100, L.level.tiles.length + ' 块瓦片');
+    rec('关卡实体已构建', L.level.entities.length > 10, L.level.entities.length + ' 个实体');
+    rec('主角已创建', !!L.cat && L.cat.active);
+    rec('敌人已创建', L.enemyList.length > 0, L.enemyList.length + ' 只');
+    rec('收集品已创建', L.itemList.length > 0, L.itemList.length + ' 个');
+    rec('天空掉落物已注册', L.skyDroppers.length > 0, L.skyDroppers.length + ' 个');
+    rec('水管伏兵已注册', L.pipeAmbushes.length > 0, L.pipeAmbushes.length + ' 处');
+    rec('终点旗杆已注册（含假通关）', L.goals.length === 2,
+        L.goals.map((g) => (g.isFake ? '假' : '真')).join('+'));
+    rec('HUD 已创建', !!L.hud);
+    rec('瓦片型陷阱已注册（碎裂/传送带）', L.trapTiles.length > 0, L.trapTiles.length + ' 块');
+
+    const dumpEnemies = (tag) => L.enemyList.map((e) => e.enemyType + '('
+      + e.x.toFixed(0) + ',' + e.y.toFixed(0)
+      + (e.body && e.body.blocked.down ? ',地面' : ',空中') + ')').join(' ');
+    rec('敌人初始站位', true, dumpEnemies());
+
+    // ---- 3. 走路 / 奔跑速度 ----
+    cat = L.cat;
+    hookDeath(cat);
+    const x0 = cat.x;
+    cat.keys.right.isDown = true;
+    await wait(700);
+    const walkSpeed = cat.body.velocity.x;
+    rec('按住右方向键猫会向右移动', cat.x - x0 > 60, '位移 ' + (cat.x - x0).toFixed(0) + 'px');
+    rec('走路速度被正确钳制在 WALK_SPEED', Math.abs(walkSpeed - 200) < 12,
+        'vx=' + walkSpeed.toFixed(1) + '（期望 200）');
+    cat.keys.shift.isDown = true;
+    await wait(400);
+    rec('按住 Shift 会加速奔跑', cat.body.velocity.x > walkSpeed + 60,
+        'vx=' + cat.body.velocity.x.toFixed(1) + '（期望 310）');
+    cat.keys.shift.isDown = false;
+    cat.keys.right.isDown = false;
+    await wait(400);
+
+    // ---- 4. 跳跃 / 可变跳跃高度 ----
+    const groundY = cat.y;
+    cat.jumpPressedAt = L.time.now;
+    cat.keys.space.isDown = true;
+    let peak = 0;
+    for (let i = 0; i < 30; i++) { await wait(FRAME_MS); peak = Math.min(peak, cat.y - groundY); }
+    rec('按下跳跃键猫会起跳', peak < -60, '最高上升 ' + (-peak).toFixed(0) + 'px');
+    cat.keys.space.isDown = false;
+    await until(() => cat.body.blocked.down, 1500);
+
+    // 可变跳跃高度：满按 vs 立刻松手
+    const measureJump = async (hold) => {
+      await until(() => cat.body.blocked.down, 1500);
+      const y0 = cat.y;
+      cat.jumpPressedAt = L.time.now;
+      cat.keys.space.isDown = true;
+      let hi = 0;
+      for (let i = 0; i < 34; i++) {
+        if (!hold && i === 4) cat.keys.space.isDown = false;
+        await wait(FRAME_MS);
+        hi = Math.min(hi, cat.y - y0);
+      }
+      cat.keys.space.isDown = false;
+      return -hi;
+    };
+    const fullH = await measureJump(true);
+    const tapH = await measureJump(false);
+    rec('可变跳跃高度：短按跳得明显比长按低', tapH < fullH - 25,
+        '长按 ' + fullH.toFixed(0) + 'px vs 短按 ' + tapH.toFixed(0) + 'px');
+
+    // 土狼时间：离开平台后短时间内仍可起跳
+    await until(() => cat.body.blocked.down, 1500);
+    cat.keys.space.isDown = true;          // 必须按住，否则会被"可变跳跃高度"立刻截断
+    cat.body.setVelocityY(-100);
+    cat.lastGroundedAt = L.time.now;
+    await wait(60);                        // 离地 60ms（仍在 100ms 土狼窗口内）
+    const canCoyote = L.time.now - cat.lastGroundedAt <= 100;
+    cat.jumpPressedAt = L.time.now;
+    await wait(100);
+    rec('土狼时间：离地 100ms 内仍能起跳', canCoyote && cat.body.velocity.y < -250,
+        'vy=' + cat.body.velocity.y.toFixed(0) + '（已离地 ' + (L.time.now - cat.lastGroundedAt).toFixed(0) + 'ms）');
+    cat.keys.space.isDown = false;
+    await until(() => cat.body.blocked.down, 2000);
+
+    // ---- 5. 踩敌人 ----
+    rescue();
+    await until(() => cat.body.blocked.down, 1500);
+    rec('踩敌人测试前置：猫是活的且是小猫', !cat.isDead && cat.form === 'small',
+        'form=' + cat.form + ' dead=' + cat.isDead);
+    // 回归测试：敌人必须和地形做碰撞，否则会一路穿地掉出世界
+    const groundEnemies = L.enemyList.filter((e) => e.enemyType !== 'crow');
+    rec('地面敌人稳稳站在地上（没有穿地掉下去）',
+        groundEnemies.length > 0 && groundEnemies.every((e) => e.body && e.body.blocked.down),
+        dumpEnemies());
+
+    // 必须挑一只"正站在地面上"的毛线球 —— 掉进坑里正在自由落体的那只没法踩
+    const enemy = L.enemyList.find((e) => e.active && e.enemyType === 'yarn' && !e.dying
+      && e.body && e.body.blocked.down);
+    let stompOK = false;
+    const calls = [];
+    const deaths = [];
+    const origContact = L.onEnemyContact.bind(L);
+    L.onEnemyContact = (c, e) => {
+      if (c.body && e.body && calls.length < 6) {
+        calls.push({
+          type: e.enemyType,
+          vy: +c.body.velocity.y.toFixed(1),
+          catBottom: +c.body.bottom.toFixed(1),
+          eTop: +e.body.top.toFixed(1),
+          eCenter: +e.body.center.y.toFixed(1),
+          stompable: e.stompable,
+          verdict: (e.stompable && c.body.velocity.y > 0
+                    && c.body.bottom <= e.body.center.y + 10) ? 'stomp' : 'hurt',
+        });
+      }
+      return origContact(c, e);
+    };
+
+    if (enemy) {
+      const before = { catX: +cat.x.toFixed(0), catY: +cat.y.toFixed(0),
+                       eX: +enemy.x.toFixed(0), eTop: +enemy.body.top.toFixed(0),
+                       eBottom: +enemy.body.bottom.toFixed(0) };
+      deathLog.length = 0;
+      cat.body.reset(enemy.x, enemy.body.top - 22);
+      cat.body.setVelocity(0, 200);
+      stompOK = await until(() => enemy.dying || cat.isDead, 1500);
+      L.onEnemyContact = origContact;
+      rec('踩敌人头顶可消灭敌人', enemy.dying && !cat.isDead,
+          (enemy.dying ? '已消灭' : '敌人未死') + ' / ' + (cat.isDead ? '猫死了' : '猫活着')
+          + ' ｜ 放猫前 ' + JSON.stringify(before)
+          + ' ｜ 放猫后 (' + cat.x.toFixed(0) + ',' + cat.y.toFixed(0) + ')'
+          + ' ｜ 接触 ' + JSON.stringify(calls)
+          + ' ｜ 死亡 ' + JSON.stringify(deathLog));
+      const vy = cat.body ? cat.body.velocity.y : NaN;
+      rec('踩敌人后向上弹起', enemy.dying && vy < 0, 'vy=' + vy.toFixed(0)
+          + ' body=' + (cat.body ? 'ok' : 'null') + ' dead=' + cat.isDead);
+      rec('踩敌人不会让猫受伤', !cat.isDead && cat.form === 'small');
+    } else {
+      rec('找到地面敌人用于测试', false);
+    }
+
+    // 从侧面撞敌人 = 受伤
+    rescue();
+    await until(() => cat.body.blocked.down, 1500);
+    const e2 = L.enemyList.find((e) => e.active && e.enemyType === 'yarn' && !e.dying
+      && e.body && e.body.blocked.down);
+    if (e2) {
+      // 关键：要贴着地面、和敌人**同高**地走过去撞。
+      // 如果放在敌人上方，猫会下落 → 变成踩头，测的就不是"侧面撞击"了。
+      cat.body.reset(e2.x - 60, e2.body.bottom);
+      cat.body.setVelocity(0, 0);
+      await until(() => cat.body.blocked.down, 800);
+      // 也不能只 setVelocity(60, 0) —— 地面阻力 2400 会在 1 帧内把速度磨没，
+      // 猫根本走不到敌人身上。要一直按住方向键，让它在"走路"状态撞过去。
+      cat.keys.right.isDown = true;
+      const hit = await until(() => cat.isDead || cat.isFrozenByInvuln(), 1500);
+      cat.keys.right.isDown = false;
+      rec('从侧面撞敌人 = 猫受伤/死亡', hit, 'isDead=' + cat.isDead
+          + ' 猫y=' + cat.y.toFixed(0) + ' 敌body=[' + e2.body.top.toFixed(0)
+          + ',' + e2.body.bottom.toFixed(0) + ']');
+    } else {
+      rec('找到第二只地面敌人用于侧面撞击测试', false);
+    }
+    rescue();
+
+    // ---- 6. 形态状态机 ----
+    cat = S().cat;
+    cat.applyForm('big');
+    cat.hurt();
+    rec('大猫受伤 → 退化为小猫（不直接死）', cat.form === 'small' && !cat.isDead,
+        'form=' + cat.form + ' dead=' + cat.isDead);
+    rescue();
+    cat.applyForm('big');
+    cat.makeInvincible(3000);
+    cat.hurt();
+    rec('无敌星期间不会受伤', cat.form === 'big' && !cat.isDead, 'form=' + cat.form);
+    rescue();
+
+    // ---- 7. 碎裂地板 ----
+    const crumble = L.trapTiles.find((t) => t.tile && t.tile.active && t.tile.tileData
+      && t.tile.tileData.crumble);
+    if (crumble) {
+      const key = crumble.tile.tileData.cx + ',' + crumble.tile.tileData.cy;
+      rec('地表碎裂地板伪装成草地（与真地面同款贴图）',
+          crumble.tile.texture.key === 'crumble_ground', crumble.tile.texture.key);
+      crumble.step();
+      rec('碎裂地板踩上后进入预警状态', crumble.state === 'shaking');
+      const gone = await until(() => !L.solidMap.has(key), 2000);
+      rec('碎裂地板在 0.3 秒后消失', gone, '状态 ' + crumble.state);
+    } else {
+      rec('找到碎裂地板', false, '关卡里没有可测试的碎裂地板');
+    }
+
+    // ---- 8. 隐形砖块 ----
+    const invisTile = L.level.tiles.find((t) => t.type === 'invisible');
+    if (invisTile) {
+      rec('隐形砖块初始完全不可见', invisTile.obj.alpha === 0);
+      invisTile.handler.reveal();
+      const shown = await until(() => invisTile.obj.alpha > 0.95, 1500);
+      rec('被撞后隐形砖块现形', shown && invisTile.handler.revealed,
+          'alpha=' + invisTile.obj.alpha.toFixed(2));
+    }
+
+    // ---- 9. 伪装天空掉落物 ----
+    rescue();
+    await until(() => cat.body.blocked.down, 1200);
+    const dropper = L.skyDroppers[0];
+    if (dropper) {
+      rec('天空掉落物触发前是纯装饰（无碰撞）', dropper.sprite.body.enable === false);
+
+      // 走到它正下方，验证"靠得够近才会掉下来"的自动触发逻辑（而不是直接调 trigger）
+      cat.body.reset(dropper.sprite.x, dropper.sprite.y + 240);
+      await wait(FRAME_MS * 2);
+      rec('猫走到正下方会自动触发', dropper.triggered === true,
+          'dx=' + Math.abs(cat.x - dropper.sprite.x).toFixed(0));
+      rescue();   // 把猫挪回出生点，免得真被砸到
+
+      let maxVy = 0;
+      const falling = await until(() => {
+        const b = dropper.sprite && dropper.sprite.active && dropper.sprite.body;
+        if (b && b.velocity) maxVy = Math.max(maxVy, b.velocity.y);
+        return maxVy > 50 || dropper.landed;
+      }, 3000);
+      rec('触发后会真的砸下来', falling, '峰值下落速度 ' + maxVy.toFixed(0) + 'px/s');
+      rec('掉落物已被计入陷阱黑名单', !!L.trapLog['伪装天空掉落物']);
+      const landed = await until(() => dropper.landed, 4000);
+      rec('掉落物砸到地面会停住并碎裂（而不是穿地）', landed, 'landed=' + dropper.landed);
+    }
+
+    // ---- 10. 隐藏向下传送带 ----
+    const conv = L.trapTiles.find((t) => t.tile && t.tile.active && t.tile.tileData
+      && t.tile.tileData.conveyor);
+    if (conv) {
+      const y0 = conv.tile.y;
+      rec('隐藏传送带外观与石块完全一致', conv.tile.texture.key === 'stone');
+      conv.step();
+      const sunk = await until(() => conv.tile.y > y0 + 100 || conv.state === 'gone', 3000);
+      rec('站上去会被悄悄送到下方', sunk,
+          'Δy=' + (conv.tile.y - y0).toFixed(0) + ' 状态=' + conv.state);
+    }
+
+    // ---- 11. 假道具真陷阱 ----
+    const fakeQ = L.level.tiles.find((t) => t.type === 'fakeQuestion');
+    if (fakeQ) {
+      const n0 = L.enemyList.length;
+      L.bumpQuestionBlock(fakeQ.obj);
+      const spawned = await until(() => L.enemyList.length > n0, 1500);
+      rec('顶假问号砖会顶出蘑菇陷阱怪', spawned, n0 + ' → ' + L.enemyList.length + ' 只敌人');
+      rec('假道具砖已标记为已使用', fakeQ.hit === true);
+    }
+
+    // ---- 12. 真问号砖出道具 ----
+    const coinQ = L.level.tiles.find((t) => t.type === 'question' && !t.hit
+      && t.item === 'goldfish');
+    const canQ = L.level.tiles.find((t) => t.type === 'question' && !t.hit && t.item === 'can');
+    if (coinQ) {
+      const c0 = L.coins;
+      L.bumpQuestionBlock(coinQ.obj);
+      await wait(200);
+      rec('顶真问号砖（金鱼款）会出金鱼', L.coins > c0, '金鱼 ' + c0 + ' → ' + L.coins);
+    }
+    if (canQ) {
+      // 先站到砖块正上方 —— 罐头是被"顶"出来的，得让猫真的接住它
+      cat.body.reset(canQ.obj.x, canQ.obj.y - TILE);
+      cat.body.setVelocity(0, 0);
+      await until(() => cat.body.blocked.down, 1200);
+      L.bumpQuestionBlock(canQ.obj);
+      const got = await until(() => cat.form === 'big', 3000);
+      rec('顶鱼罐头砖 → 猫变大', got, 'form=' + cat.form);
+    }
+    rescue();
+
+    // ---- 13. 死亡 → 立刻重开 ----
+    const d0 = L.deaths;
+    const levelBefore = L.level;
+    L.cat.die();
+    rec('死亡后进入死亡状态', L.cat.isDead);
+    const rebuilt = await until(() => S().level !== levelBefore, 4000);
+    const L2 = S();
+    rec('死亡后自动重开本关（无多余过场）', rebuilt && L2.deaths === d0 + 1,
+        '死亡数 ' + d0 + ' → ' + L2.deaths);
+    const spawnX = L2.level.spawn.x * 48 + 24;
+    rec('重开后主角回到出生点', Math.abs(L2.cat.x - spawnX) < 60,
+        'x=' + L2.cat.x.toFixed(0) + ' 期望 ' + spawnX);
+    rec('重开后地形完全恢复', L2.level.tiles.length === levelBefore.tiles.length,
+        L2.level.tiles.length + ' 块');
+
+    // ---- 14. 假通关旗杆 ----
+    L = S();
+    const fake = L.goals.find((g) => g.isFake);
+    const real = L.goals.find((g) => !g.isFake);
+    const tilesBefore = L.solidMap.size;
+    L.cat.setPosition(fake.worldX, fake.baseY - 60);
+    fake.onTouch(L.cat);
+    rec('碰到假旗杆会先"假装过关"', fake.touched === true);
+    const collapsed = await until(() => L.solidMap.size < tilesBefore, 4000);
+    rec('假旗杆随后会让地面塌陷', collapsed,
+        tilesBefore + ' → ' + L.solidMap.size + ' 块实心瓦片');
+    rec('假通关陷阱已计入黑名单', !!L.trapLog['终点旗杆的"假通关"陷阱']);
+    rec('假通关之后主角恢复可控', L.cat.frozen === false);
+
+    // ---- 15. 真终点 → 结算 ----
+    L.cat.setPosition(real.worldX, real.baseY - 60);
+    real.onTouch(L.cat);
+    const done = await until(() => {
+      const LC = GAME.scene.getScene('LevelComplete');
+      return LC && LC.scene.isActive();
+    }, 4000);
+    const LC = GAME.scene.getScene('LevelComplete');
+    rec('碰到真旗杆会进入结算场景', done);
+    if (done) {
+      rec('结算数据完整（用时/死亡/金鱼）',
+          typeof LC.info.timeMs === 'number' && typeof LC.info.deaths === 'number'
+          && typeof LC.info.coins === 'number',
+          '用时 ' + LC.info.timeMs + 'ms, 死亡 ' + LC.info.deaths + ', 金鱼 ' + LC.info.coins);
+      rec('最佳记录已写入 localStorage', !!localStorage.getItem('catmario.save.v1'));
+    }
+
+    // ---- 15.5 从地面走到真旗杆下就应该过关 ----
+    // 上面第 15 节是"白盒"测试：直接调 real.onTouch()，把真实的 overlap 判定绕过去了，
+    // 所以它能通过，却完全不能证明玩家**真的能碰到旗杆**。这里补上黑盒路径。
+    //
+    // 盯的是旗杆触发区的高度。触发区是一个静态 zone，如果它只盖住旗杆上半段，
+    // 那么猫站在地面上时（头顶在 zone 下沿之下）走过去是碰不到的，
+    // 必须原地起跳才算过关 —— 对一个满地假旗杆的游戏来说，玩家会以为
+    // 真旗杆也是假的，然后卡死在最后一格。所以这里从地面一路走过去验证。
+    GAME.scene.stop('LevelComplete');
+    GAME.scene.start('Level', { levelId: 1 });
+    await wait(700);
+    {
+      const LL = S();
+      const realGoal = LL.goals.find((g) => !g.isFake);
+      // baseY 就是旗杆脚下那格地面的上沿，把猫的脚底对齐到这里
+      LL.cat.body.reset(realGoal.worldX - 130, realGoal.baseY);
+      LL.cat.body.setVelocity(0, 0);
+      await until(() => LL.cat.body.blocked.down, 900);
+      const footY = LL.cat.body.bottom;
+      const zTop = realGoal.zone.body.top;
+      const zBottom = realGoal.zone.body.bottom;
+      const headY = LL.cat.body.top;
+
+      LL.cat.keys.right.isDown = true;
+      const walked = await until(() => {
+        const C = GAME.scene.getScene('LevelComplete');
+        return C && C.scene.isActive();
+      }, 2500);
+      LL.cat.keys.right.isDown = false;
+
+      rec('从地面走到真旗杆下就能过关（不必起跳）', walked,
+          '猫 y=[' + headY.toFixed(0) + ',' + footY.toFixed(0) + ']'
+          + ' ｜ 触发区 y=[' + zTop.toFixed(0) + ',' + zBottom.toFixed(0) + ']'
+          + ' ｜ ' + (zBottom < headY ? '触发区下沿高于猫头顶 → 走进去碰不到' : '重叠正常'));
+      if (walked) GAME.scene.stop('LevelComplete');
+    }
+
+    // ---- 16. 二、三关都能构建 ----
+    for (const id of [2, 3]) {
+      GAME.scene.stop('LevelComplete');
+      GAME.scene.start('Level', { levelId: id });
+      await wait(700);
+      const s = S();
+      rec('第 ' + id + ' 关可以正常构建',
+          s && s.scene.isActive() && s.level.tiles.length > 100 && !!s.cat,
+          s && s.level
+            ? s.level.tiles.length + ' 块瓦片 / ' + s.enemyList.length + ' 只敌人 / '
+              + s.goals.length + ' 个旗杆'
+            : '失败');
+    }
+
+    // ---- 17. 暂停菜单 ----
+    const s3 = S();
+    s3.togglePause();
+    const paused = await until(() => {
+      const P = GAME.scene.getScene('Pause');
+      return P && P.scene.isActive();
+    }, 1500);
+    rec('P 键可以呼出暂停菜单', paused);
+    if (paused) {
+      GAME.scene.getScene('Pause').resume();
+      const resumed = await until(() => s3.scene.isActive() && !s3.paused, 1500);
+      rec('暂停菜单可以恢复游戏', resumed);
+    }
+  } catch (err) {
+    rec('测试脚本未抛异常', false, err && err.stack ? err.stack.split('\n')[0] : String(err));
+  } finally {
+    finish();
+  }
+})();
+</script>
+</body>
+</html>

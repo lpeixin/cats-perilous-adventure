@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>猫咪历险记 · Cat's Perilous Adventure</title>
+<meta name="description" content="一款原创的陷阱式恶搞平台跳跃游戏：看起来人畜无害，实际上满地是坑。">
+<link rel="icon" href="assets/ui/appicon.png">
+<style>
+  :root { --bg: #2b2024; --ink: #ffecd6; --muted: #8b7c78; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg);
+    overflow: hidden;
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  #game-root {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #game-root canvas {
+    display: block;
+    border-radius: 14px;
+    box-shadow: 0 24px 70px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.06);
+  }
+  /* 竖屏/窄屏时的友好提示 */
+  #rotate-tip {
+    position: fixed; inset: 0; display: none;
+    align-items: center; justify-content: center;
+    background: var(--bg); color: var(--ink);
+    text-align: center; padding: 40px; font-size: 15px; line-height: 1.8;
+    z-index: 10;
+  }
+  @media (max-aspect-ratio: 1/1) and (max-width: 820px) {
+    #rotate-tip { display: flex; }
+  }
+  #boot-error {
+    position: fixed; inset: 0; display: none;
+    align-items: center; justify-content: center; flex-direction: column; gap: 14px;
+    background: var(--bg); color: #ffd6d6; text-align: center; padding: 40px;
+    font-size: 15px; line-height: 1.9; z-index: 20;
+  }
+  #boot-error code {
+    background: rgba(255,255,255,.08); padding: 3px 8px; border-radius: 6px;
+    color: #ffecd6; font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<div id="game-root"></div>
+
+<div id="rotate-tip">
+  🐱<br>《猫咪历险记》是横版游戏，<br>请把设备横过来玩会更舒服。
+</div>
+
+<div id="boot-error">
+  <div style="font-size:26px">🐱 启动失败</div>
+  <div>
+    本游戏需要通过<b>本地服务器</b>打开，直接双击 index.html 会被浏览器的<br>
+    ES Module / 跨域策略拦住。<br><br>
+    请在项目根目录执行：<br>
+    <code>npm install</code><br>
+    <code>npm run dev</code><br>
+    然后访问终端里提示的地址（默认 <code>http://localhost:5173/</code>）
+  </div>
+</div>
+
+<script>
+  // Phaser 从本地 vendor/ 目录加载 —— 全程不依赖任何 CDN，可完全离线运行
+  window.addEventListener('error', function (e) {
+    if (e && e.message && /phaser|import|module/i.test(e.message)) {
+      document.getElementById('boot-error').style.display = 'flex';
+    }
+  }, true);
+</script>
+<script src="vendor/phaser.min.js"></script>
+<script>
+  if (typeof Phaser === 'undefined') {
+    document.getElementById('boot-error').style.display = 'flex';
+  }
+</script>
+<script type="module" src="src/main.js"></script>
+
+</body>
+</html>
