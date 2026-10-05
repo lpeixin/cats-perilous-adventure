@@ -13,6 +13,7 @@ const DEFAULT = {
   totalFish: 0,
   unlocked: 1,       // 已解锁的最大关卡 id
   muted: false,
+  lang: null,        // 手动选择过的界面语言（'en' | 'zh'），null = 跟随浏览器
 };
 
 function read() {
@@ -88,6 +89,16 @@ export const Save = {
     return read().muted;
   },
 
+  getLang() {
+    return read().lang;
+  },
+
+  setLang(lang) {
+    const data = read();
+    data.lang = lang;
+    write(data);
+  },
+
   reset() {
     write(structuredClone(DEFAULT));
   },
@@ -106,13 +117,14 @@ export function formatTime(ms) {
 /**
  * 根据死亡次数生成调侃文案。
  * 这是这类游戏的"荣誉勋章"，死得越多评价越浮夸。
+ * 文案本体在 i18n 字典里（taunt.*），这里只负责分档 + 提供占位参数。
  */
 export function deathTaunt(deaths) {
-  if (deaths === 0) return { text: '零死亡通关？！猫都怀疑你是不是提前看过剧本 🐱❓', tier: 'god' };
-  if (deaths <= 3) return { text: `只死了 ${deaths} 次，猫对你竖起了尾巴 🐱✨`, tier: 'great' };
-  if (deaths <= 9) return { text: `死亡 ${deaths} 次，勉强算是摸清了套路 🐾`, tier: 'good' };
-  if (deaths <= 19) return { text: `死亡 ${deaths} 次，猫已经开始同情你了 😿`, tier: 'ok' };
-  if (deaths <= 39) return { text: `死亡 ${deaths} 次，猫都要哭了 🐱💦`, tier: 'bad' };
-  if (deaths <= 79) return { text: `死亡 ${deaths} 次，你和地板的关系非常亲密 🐱🔥`, tier: 'awful' };
-  return { text: `死亡 ${deaths} 次……这已经不是通关，这是行为艺术 🐱🏆`, tier: 'legend' };
+  if (deaths === 0) return { key: 'taunt.god', params: { n: deaths }, tier: 'god' };
+  if (deaths <= 3) return { key: 'taunt.great', params: { n: deaths }, tier: 'great' };
+  if (deaths <= 9) return { key: 'taunt.good', params: { n: deaths }, tier: 'good' };
+  if (deaths <= 19) return { key: 'taunt.ok', params: { n: deaths }, tier: 'ok' };
+  if (deaths <= 39) return { key: 'taunt.bad', params: { n: deaths }, tier: 'bad' };
+  if (deaths <= 79) return { key: 'taunt.awful', params: { n: deaths }, tier: 'awful' };
+  return { key: 'taunt.legend', params: { n: deaths }, tier: 'legend' };
 }

@@ -14,6 +14,7 @@ node_modules/
 npm-debug.log*
 yarn-error.log*
 .npm/
+*.log
 
 # --- Vendored Phaser: auto-synced into vendor/ by the postinstall script,
 #     do not commit (see scripts/sync-phaser.cjs) ---
@@ -22,10 +23,11 @@ vendor/
 # --- Electron builder output ---
 dist/
 
-# --- Editors / IDE ---
+# --- Editors / IDE / local AI tool state ---
 .vscode/
 .idea/
 *.swp
+.zcode/
 
 # --- Env & secrets ---
 .env
@@ -34,3 +36,8 @@ dist/
 # --- Python (tools/gen_assets.py, tools/build_levels.py) ---
 __pycache__/
 *.pyc
+.venv/
+venv/
+
+# --- Generated artifacts (tools/trap-report.mjs --out) ---
+docs/_trap-inventory.md

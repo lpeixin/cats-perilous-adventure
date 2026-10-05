@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>猫咪历险记 · Cat's Perilous Adventure</title>
-<meta name="description" content="一款原创的陷阱式恶搞平台跳跃游戏：看起来人畜无害，实际上满地是坑。">
+<meta name="description" content="An original trap-troll platformer that looks perfectly harmless. 一款原创的陷阱式恶搞平台跳跃游戏。">
 <link rel="icon" href="assets/ui/appicon.png">
 <style>
   :root { --bg: #2b2024; --ink: #ffecd6; --muted: #8b7c78; }
@@ -53,18 +53,28 @@
 <div id="game-root"></div>
 
 <div id="rotate-tip">
-  🐱<br>《猫咪历险记》是横版游戏，<br>请把设备横过来玩会更舒服。
+  🐱<br><span data-lang="en">This is a landscape game.<br>Please rotate your device for a better experience.</span><span data-lang="zh">《猫咪历险记》是横版游戏，<br>请把设备横过来玩会更舒服。</span>
 </div>
 
 <div id="boot-error">
-  <div style="font-size:26px">🐱 启动失败</div>
+  <div style="font-size:26px">🐱 <span data-lang="en">Failed to start</span><span data-lang="zh">启动失败</span></div>
   <div>
-    本游戏需要通过<b>本地服务器</b>打开，直接双击 index.html 会被浏览器的<br>
-    ES Module / 跨域策略拦住。<br><br>
-    请在项目根目录执行：<br>
-    <code>npm install</code><br>
-    <code>npm run dev</code><br>
-    然后访问终端里提示的地址（默认 <code>http://localhost:5173/</code>）
+    <span data-lang="en">
+      This game must be served over <b>HTTP</b> — opening index.html directly from disk is blocked<br>
+      by the browser's ES Module / cross-origin policy.<br><br>
+      Run in the project root:<br>
+      <code>npm install</code><br>
+      <code>npm run dev</code><br>
+      then open the address printed in the terminal (default <code>http://localhost:5173/</code>)
+    </span>
+    <span data-lang="zh">
+      本游戏需要通过<b>本地服务器</b>打开，直接双击 index.html 会被浏览器的<br>
+      ES Module / 跨域策略拦住。<br><br>
+      请在项目根目录执行：<br>
+      <code>npm install</code><br>
+      <code>npm run dev</code><br>
+      然后访问终端里提示的地址（默认 <code>http://localhost:5173/</code>）
+    </span>
   </div>
 </div>
 
@@ -81,6 +91,27 @@
   if (typeof Phaser === 'undefined') {
     document.getElementById('boot-error').style.display = 'flex';
   }
+
+  // 页面级提示文案（横屏提示 / 启动失败）跟随游戏内语言：
+  // ?lang= 参数 → 上次的选择（存档）→ 浏览器语言，和 src/utils/i18n.js 的规则保持一致。
+  (function () {
+    var lang = null;
+    try { lang = new URLSearchParams(location.search).get('lang'); } catch (e) {}
+    if (lang !== 'en' && lang !== 'zh') {
+      try {
+        var save = JSON.parse(localStorage.getItem('catmario.save.v1') || 'null');
+        lang = (save && save.lang) || null;
+      } catch (e) { lang = null; }
+    }
+    if (lang !== 'en' && lang !== 'zh') {
+      lang = (navigator.language || 'en').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en';
+    }
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+    var nodes = document.querySelectorAll('[data-lang]');
+    for (var i = 0; i < nodes.length; i++) {
+      nodes[i].style.display = nodes[i].getAttribute('data-lang') === lang ? '' : 'none';
+    }
+  })();
 </script>
 <script type="module" src="src/main.js"></script>
 

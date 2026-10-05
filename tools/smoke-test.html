@@ -447,7 +447,7 @@ setTimeout(() => {
         return maxVy > 50 || dropper.landed;
       }, 3000);
       rec('触发后会真的砸下来', falling, '峰值下落速度 ' + maxVy.toFixed(0) + 'px/s');
-      rec('掉落物已被计入陷阱黑名单', !!L.trapLog['伪装天空掉落物']);
+      rec('掉落物已被计入陷阱黑名单', !!L.trapLog['skyDropper']);
       const landed = await until(() => dropper.landed, 4000);
       rec('掉落物砸到地面会停住并碎裂（而不是穿地）', landed, 'landed=' + dropper.landed);
     }
@@ -521,7 +521,7 @@ setTimeout(() => {
     const collapsed = await until(() => L.solidMap.size < tilesBefore, 4000);
     rec('假旗杆随后会让地面塌陷', collapsed,
         tilesBefore + ' → ' + L.solidMap.size + ' 块实心瓦片');
-    rec('假通关陷阱已计入黑名单', !!L.trapLog['终点旗杆的"假通关"陷阱']);
+    rec('假通关陷阱已计入黑名单', !!L.trapLog['fakeGoal']);
     rec('假通关之后主角恢复可控', L.cat.frozen === false);
 
     // ---- 15. 真终点 → 结算 ----

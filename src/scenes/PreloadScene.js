@@ -3,9 +3,14 @@
  * ---------------------------------------------------------------
  * 所有资源都来自**本地 assets/ 目录**（Phaser 本体也已复制到 vendor/），
  * 因此加载完成之后整个游戏可以完全离线运行，不请求任何外部域名。
+ *
+ * 这里还会用 Canvas 现场生成两张"氛围纹理"：
+ *   · vignette  —— 四周轻轻压暗的暗角，给画面加纵深（全场景共用）
+ *   · skyGrad   —— 天空自上而下的渐变，让平涂的蓝天有空气感
  */
 import { COLORS, GAME_WIDTH, GAME_HEIGHT, LEVELS, TILE } from '../utils/constants.js';
 import { registerAnimations } from '../utils/animations.js';
+import { t } from '../utils/i18n.js';
 
 /** 需要按精灵表切分的图（key, 路径, 单帧宽, 单帧高） */
 const SHEETS = [
@@ -55,6 +60,8 @@ const IMAGES = [
   ['icon_clock', 'assets/ui/icon_clock.png'],
 ];
 
+const FONT = 'PingFang SC, Helvetica Neue, Arial, sans-serif';
+
 export default class PreloadScene extends Phaser.Scene {
   constructor() {
     super('Preload');
@@ -74,6 +81,49 @@ export default class PreloadScene extends Phaser.Scene {
     });
   }
 
+  create() {
+    this.buildAmbientTextures();
+    if (this.loadError) {
+      this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 24, t('loading.error'), {
+        fontFamily: FONT, fontSize: '14px', color: '#ff9a9a',
+      }).setOrigin(0.5);
+    }
+    registerAnimations(this.anims);
+    this.scene.start('Menu');
+  }
+
+  // -------------------------------------------------------------------------
+  // 运行时生成的氛围纹理（两个场景共用，只在加载页画一次）
+  // -------------------------------------------------------------------------
+  buildAmbientTextures() {
+    // 暗角：径向渐变，四周压暗、中心全透明
+    if (!this.textures.exists('vignette')) {
+      const cv = this.textures.createCanvas('vignette', GAME_WIDTH, GAME_HEIGHT);
+      const ctx = cv.getContext();
+      const g = ctx.createRadialGradient(
+        GAME_WIDTH / 2, GAME_HEIGHT / 2, Math.min(GAME_WIDTH, GAME_HEIGHT) * 0.44,
+        GAME_WIDTH / 2, GAME_HEIGHT / 2, Math.max(GAME_WIDTH, GAME_HEIGHT) * 0.72,
+      );
+      g.addColorStop(0, 'rgba(30,20,24,0)');
+      g.addColorStop(1, 'rgba(30,20,24,0.30)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+      cv.refresh();
+    }
+
+    // 天空渐变：顶部一层淡淡的深蓝，往下 45% 处完全透明
+    if (!this.textures.exists('skyGrad')) {
+      const cv = this.textures.createCanvas('skyGrad', GAME_WIDTH, GAME_HEIGHT);
+      const ctx = cv.getContext();
+      const g = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT * 0.45);
+      g.addColorStop(0, 'rgba(38,66,120,0.20)');
+      g.addColorStop(1, 'rgba(38,66,120,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT * 0.45);
+      cv.refresh();
+    }
+  }
+
   buildLoadingUI() {
     const cx = GAME_WIDTH / 2;
     const cy = GAME_HEIGHT / 2;
@@ -81,12 +131,11 @@ export default class PreloadScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(0x2b2024);
     this.add.image(cx, cy, 'bg_sky').setDisplaySize(GAME_WIDTH, GAME_HEIGHT).setAlpha(0.18);
 
-    this.add.text(cx, cy - 96, '猫咪历险记', {
-      fontFamily: 'PingFang SC, Helvetica Neue, Arial, sans-serif',
-      fontSize: '44px', color: '#ffecd6', fontStyle: 'bold',
+    this.add.text(cx, cy - 96, t('loading.title'), {
+      fontFamily: FONT, fontSize: '44px', color: '#ffecd6', fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    this.add.text(cx, cy - 52, "Cat's Perilous Adventure", {
+    this.add.text(cx, cy - 52, t('loading.sub'), {
       fontFamily: 'Helvetica Neue, Arial, sans-serif',
       fontSize: '16px', color: '#c4b2aa', letterSpacing: 3,
     }).setOrigin(0.5);
@@ -101,16 +150,14 @@ export default class PreloadScene extends Phaser.Scene {
     this.barG = g;
     this.barGeom = { x: cx - barW / 2, y: cy + 22, w: barW, h: barH };
 
-    this.pctText = this.add.text(cx, cy + 76, '正在加载…', {
-      fontFamily: 'PingFang SC, Helvetica Neue, Arial, sans-serif',
-      fontSize: '14px', color: '#c4b2aa',
+    this.pctText = this.add.text(cx, cy + 76, t('loading.progress', { p: 0 }), {
+      fontFamily: FONT, fontSize: '14px', color: '#c4b2aa',
     }).setOrigin(0.5);
 
-    this.tipText = this.add.text(cx, GAME_HEIGHT - 54,
-      '提示：按住跳跃键能跳得更高；掉下平台前的 0.1 秒内仍然可以起跳。', {
-        fontFamily: 'PingFang SC, Helvetica Neue, Arial, sans-serif',
-        fontSize: '13px', color: '#8b7c78',
-      }).setOrigin(0.5);
+    this.tipText = this.add.text(cx, GAME_HEIGHT - 54, t('loading.tip'), {
+      fontFamily: FONT, fontSize: '13px', color: '#8b7c78',
+      wordWrap: { width: GAME_WIDTH - 200 },
+    }).setOrigin(0.5);
   }
 
   setProgress(p) {
@@ -118,17 +165,12 @@ export default class PreloadScene extends Phaser.Scene {
     this.barG.fillStyle(0xffc842, 1);
     const filled = Math.max(6, w * p);
     this.barG.fillRoundedRect(x, y, filled, h, 11);
-    if (this.pctText) this.pctText.setText(`正在加载… ${Math.round(p * 100)}%`);
-  }
-
-  create() {
-    if (this.loadError) {
-      this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 24,
-        '有资源加载失败，请确认是通过 npm run dev 启动的本地服务器访问本页。', {
-          fontFamily: 'PingFang SC, sans-serif', fontSize: '14px', color: '#ff9a9a',
-        }).setOrigin(0.5);
+    if (this.pctText) {
+      const str = t('loading.progress', { p: Math.round(p * 100) });
+      if (str !== this._lastPct) {
+        this._lastPct = str;
+        this.pctText.setText(str);
+      }
     }
-    registerAnimations(this.anims);
-    this.scene.start('Menu');
   }
 }

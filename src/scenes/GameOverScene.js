@@ -9,6 +9,7 @@ import { GAME_WIDTH, GAME_HEIGHT, LEVELS } from '../utils/constants.js';
 import { audio } from '../utils/audio.js';
 import { formatTime, deathTaunt } from '../utils/save.js';
 import { drawCard } from '../ui/Hud.js';
+import { t } from '../utils/i18n.js';
 
 const FONT = 'PingFang SC, Helvetica Neue, Arial, sans-serif';
 
@@ -41,32 +42,31 @@ export default class GameOverScene extends Phaser.Scene {
       duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     });
 
-    this.add.text(GAME_WIDTH / 2, y + 44, '先歇会儿', {
+    this.add.text(GAME_WIDTH / 2, y + 44, t('over.title'), {
       fontFamily: FONT, fontSize: '34px', color: '#3e2e32', fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    this.add.text(GAME_WIDTH / 2, y + 84, cfg.name, {
+    this.add.text(GAME_WIDTH / 2, y + 84, t(cfg.nameKey), {
       fontFamily: FONT, fontSize: '14px', color: '#8b7c78',
     }).setOrigin(0.5);
 
     const taunt = deathTaunt(this.info.deaths || 0);
     this.add.text(GAME_WIDTH / 2, y + 124,
-      `你在这一关死了 ${this.info.deaths || 0} 次，坚持了 ${formatTime(this.info.elapsed || 0)}`, {
+      t('over.summary', { n: this.info.deaths || 0, time: formatTime(this.info.elapsed || 0) }), {
         fontFamily: FONT, fontSize: '15px', color: '#3e2e32',
       }).setOrigin(0.5);
 
-    this.add.text(GAME_WIDTH / 2, y + 154, taunt.text, {
+    this.add.text(GAME_WIDTH / 2, y + 154, t(taunt.key, taunt.params), {
       fontFamily: FONT, fontSize: '14px', color: '#b63c3c',
       wordWrap: { width: w - 70 }, align: 'center',
     }).setOrigin(0.5);
 
-    this.add.text(GAME_WIDTH / 2, y + 200,
-      '死亡次数已经记进荣誉榜了，随时可以回来继续。', {
+    this.add.text(GAME_WIDTH / 2, y + 200, t('over.persist'), {
         fontFamily: FONT, fontSize: '12.5px', color: '#8b7c78',
       }).setOrigin(0.5);
 
     const hint = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 62,
-      'Enter 重新挑战　·　Esc 回主菜单', {
+      t('over.hint'), {
         fontFamily: FONT, fontSize: '15px', color: '#fffdfa', fontStyle: 'bold',
         stroke: '#3e2e32', strokeThickness: 4,
       }).setOrigin(0.5);

@@ -51,6 +51,8 @@ export default class Cat extends Phaser.Physics.Arcade.Sprite {
     this.jumpPressedAt = -Infinity;
     this.jumpHeld = false;
     this.wasOnGround = true;
+    this.fallPeak = 0;          // 空中下落的峰值速度（落地尘土大小用）
+    this.juiceTween = null;     // 挤压拉伸动画（同一时间只保留一个）
 
     this.applyForm('small', { silent: true });
     this.setupInput(scene);
@@ -296,6 +298,8 @@ export default class Cat extends Phaser.Physics.Arcade.Sprite {
       this.jumpHeld = true;
       this.jumpPressedAt = -Infinity;
       this.lastGroundedAt = -Infinity;
+      this.juiceStretch();
+      if (this.scene.dust) this.scene.dust(this.x, this.y, 3);
       audio.play('jump');
       this.scene.onCatJumped();
     }
@@ -311,10 +315,44 @@ export default class Cat extends Phaser.Physics.Arcade.Sprite {
     }
 
     // —— 落地缓冲帧 ——
-    if (!this.wasOnGround && onGround) this.landedAt = time;
+    if (!this.wasOnGround && onGround) {
+      this.landedAt = time;
+      // 落地挤压 + 尘土：下落越快，效果越明显
+      const impact = Phaser.Math.Clamp((this.fallPeak - 220) / 500, 0, 1);
+      this.fallPeak = 0;
+      if (impact > 0.02) {
+        this.juiceSquash(impact);
+        if (this.scene.dust) {
+          this.scene.dust(this.x, this.y, 2 + Math.round(impact * 4));
+        }
+      }
+    }
+    if (!onGround) this.fallPeak = Math.max(this.fallPeak, body.velocity.y);
     this.wasOnGround = onGround;
 
     this.updateAnimState(onGround);
+  }
+
+  // =========================================================================
+  // 挤压拉伸（跳跃/落地的小动画，纯视觉，不影响碰撞盒）
+  // 猫的 origin 在脚底（0.5, 0.94），所以缩放时脚不会陷进地里
+  // =========================================================================
+  juiceStretch() {
+    if (this.isDead) return;
+    if (this.juiceTween) this.juiceTween.remove();
+    this.setScale(1.12, 0.88);
+    this.juiceTween = this.scene.tweens.add({
+      targets: this, scaleX: 1, scaleY: 1, duration: 160, ease: 'Back.easeOut',
+    });
+  }
+
+  juiceSquash(strength = 1) {
+    if (this.isDead) return;
+    if (this.juiceTween) this.juiceTween.remove();
+    this.setScale(1 + 0.14 * strength, 1 - 0.18 * strength);
+    this.juiceTween = this.scene.tweens.add({
+      targets: this, scaleX: 1, scaleY: 1, duration: 190, ease: 'Back.easeOut',
+    });
   }
 
   canStandUp() {
@@ -373,6 +411,9 @@ export default class Cat extends Phaser.Physics.Arcade.Sprite {
     this.starUntil = 0;
     this.setAlpha(1);
     this.clearTint();
+    this.setScale(1);
+    this.juiceTween = null;
+    this.fallPeak = 0;
     this.setPosition(x, y);
     this.body.setAllowGravity(true);
     this.body.checkCollision.none = false;

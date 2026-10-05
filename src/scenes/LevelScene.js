@@ -13,6 +13,7 @@ import {
 import { parseLevel } from '../utils/levelLoader.js';
 import { audio } from '../utils/audio.js';
 import { Save } from '../utils/save.js';
+import { t } from '../utils/i18n.js';
 import Cat from '../entities/Cat.js';
 import { createEnemy } from '../entities/Enemy.js';
 import {
@@ -21,7 +22,7 @@ import {
 import Hud from '../ui/Hud.js';
 
 const FONT = 'PingFang SC, Helvetica Neue, Arial, sans-serif';
-const DEPTH = { bg: -20, tile: 10, enemy: 15, item: 12, cat: 20, fx: 40 };
+const DEPTH = { bg: -20, tile: 10, enemy: 15, item: 12, cat: 20, fx: 40, ambient: 150 };
 
 export default class LevelScene extends Phaser.Scene {
   constructor() {
@@ -45,7 +46,7 @@ export default class LevelScene extends Phaser.Scene {
     const raw = this.cache.json.get(cfg.key);
     if (!raw) {
       this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2,
-        `关卡数据 ${cfg.file} 加载失败`, { fontFamily: FONT, fontSize: '18px', color: '#ff9a9a' })
+        t('err.levelLoad', { file: cfg.file }), { fontFamily: FONT, fontSize: '18px', color: '#ff9a9a' })
         .setOrigin(0.5);
       return;
     }
@@ -69,13 +70,18 @@ export default class LevelScene extends Phaser.Scene {
     this.paused = false;
     this.levelDone = false;
 
-    this.hud.setLevelName(cfg.name, cfg.subtitle);
+    this.hud.setLevelName(t(cfg.nameKey), t(cfg.subtitleKey));
     this.hud.setDeaths(this.deaths);
     this.hud.setCoins(0);
     this.hud.setForm('small', 0);
     this.hud.setTime(this.elapsed);
 
     this.cameras.main.fadeIn(300, 43, 32, 36);
+
+    // 暗角氛围层：在 HUD 之下、游戏画面之上，四周轻轻压暗
+    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'vignette')
+      .setScrollFactor(0).setDepth(DEPTH.ambient).setAlpha(0.8);
+
     this.started = true;
   }
 
@@ -86,14 +92,17 @@ export default class LevelScene extends Phaser.Scene {
     this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'bg_sky')
       .setDisplaySize(GAME_WIDTH, GAME_HEIGHT)
       .setScrollFactor(0).setDepth(DEPTH.bg);
+    // 顶部渐变：让平涂的蓝天有一点纵深（scrollFactor=0，跟随屏幕）
+    this.add.image(GAME_WIDTH / 2, 0, 'skyGrad')
+      .setOrigin(0.5, 0).setScrollFactor(0).setDepth(DEPTH.bg + 1);
 
     this.bgFar = this.add.tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, 'bg_far')
       .setOrigin(0, 0).setDisplaySize(GAME_WIDTH, GAME_HEIGHT)
-      .setScrollFactor(0).setDepth(DEPTH.bg + 1).setAlpha(0.95);
+      .setScrollFactor(0).setDepth(DEPTH.bg + 2).setAlpha(0.95);
 
     this.bgMid = this.add.tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, 'bg_mid')
       .setOrigin(0, 0).setDisplaySize(GAME_WIDTH, GAME_HEIGHT)
-      .setScrollFactor(0).setDepth(DEPTH.bg + 2);
+      .setScrollFactor(0).setDepth(DEPTH.bg + 3);
 
     // 地下"深色底衬"。
     // 三个背景层都是 scrollFactor=0 的整屏图，而坑里是空的 ——
@@ -271,7 +280,7 @@ export default class LevelScene extends Phaser.Scene {
 
         case 'softCloud': {
           const c = this.add.image(x, y, 'cloud_soft')
-            .setDepth(DEPTH.bg + 3).setAlpha(0.95);
+            .setDepth(DEPTH.bg + 4).setAlpha(0.95);
           this.tweens.add({
             targets: c, y: y + 9, duration: 2400 + Math.random() * 900,
             yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
@@ -452,7 +461,7 @@ export default class LevelScene extends Phaser.Scene {
     const item = t.item || 'goldfish';
     if (item === 'trapMushroom') {
       // 假道具真陷阱：顶出来的是会扑咬的蘑菇怪
-      this.onTrapTriggered('假道具真陷阱');
+      this.onTrapTriggered('fakeItem');
       const en = createEnemy(this, tile.x, tile.y - TILE * 0.75, 'mushroom', { emerging: true });
       if (en) {
         this.addEnemy(en);
@@ -518,6 +527,7 @@ export default class LevelScene extends Phaser.Scene {
       enemy.stomp();
       const held = cat.jumpDown;
       cat.body.setVelocityY(held ? PHYS.STOMP_BOUNCE_HELD : PHYS.STOMP_BOUNCE);
+      cat.juiceStretch();
       this.addScore(100);
       this.popText(enemy.x, enemy.y - 20, '+100', '#8ed48c');
     } else {
@@ -556,14 +566,38 @@ export default class LevelScene extends Phaser.Scene {
   // 特效小工具
   // =========================================================================
   popText(x, y, msg, color = '#fffdfa') {
-    const t = this.add.text(x, y, msg, {
+    const t2 = this.add.text(x, y, msg, {
       fontFamily: FONT, fontSize: '17px', color, fontStyle: 'bold',
       stroke: '#3e2e32', strokeThickness: 4,
     }).setOrigin(0.5).setDepth(DEPTH.fx);
+    t2.setScale(0.7);
     this.tweens.add({
-      targets: t, y: y - 34, alpha: 0, duration: 620, ease: 'Quad.easeOut',
-      onComplete: () => t.destroy(),
+      targets: t2, scale: 1, duration: 130, ease: 'Back.easeOut',
     });
+    this.tweens.add({
+      targets: t2, y: y - 34, alpha: 0, duration: 620, delay: 90, ease: 'Quad.easeOut',
+      onComplete: () => t2.destroy(),
+    });
+  }
+
+  /** 脚下的尘土（起跳 / 落地时的一小撮，让动作"落地有声"） */
+  dust(x, y, n = 4, tint = 0xd9cfc0) {
+    for (let i = 0; i < n; i++) {
+      const s = this.add.circle(
+        x + Phaser.Math.Between(-9, 9), y - Phaser.Math.Between(0, 4),
+        Phaser.Math.FloatBetween(2.5, 5), tint, 0.85,
+      ).setDepth(DEPTH.fx - 1);
+      this.tweens.add({
+        targets: s,
+        x: s.x + Phaser.Math.FloatBetween(-28, 28),
+        y: s.y - Phaser.Math.FloatBetween(4, 20),
+        alpha: 0,
+        scale: 0.4,
+        duration: Phaser.Math.Between(260, 430),
+        ease: 'Quad.easeOut',
+        onComplete: () => s.destroy(),
+      });
+    }
   }
 
   spawnDebris(x, y, color, n = 4) {
@@ -617,30 +651,30 @@ export default class LevelScene extends Phaser.Scene {
   }
 
   // =========================================================================
-  // 陷阱事件回调（由 Trap.js 调用）
+  // 陷阱事件回调（由 Trap.js 调用；name 是 i18n 键，如 'skyDropper'）
   // =========================================================================
-  onTrapTriggered(name) {
-    if (!this.trapLog[name]) {
-      this.trapLog[name] = 0;
-      this.hud.toast(`「${name}」已加入你的黑名单 🐱`, 1700, 0xb63c3c);
+  onTrapTriggered(key) {
+    if (!this.trapLog[key]) {
+      this.trapLog[key] = 0;
+      this.hud.toast(t('toast.blacklist', { name: t(`trap.${key}`) }), 1700, 0xb63c3c);
     }
-    this.trapLog[name]++;
+    this.trapLog[key]++;
   }
 
-  onTrapSprung(name) {
-    this.popText(this.cat.x, this.cat.y - 60, name, '#ff9a9a');
+  onTrapSprung(key) {
+    this.popText(this.cat.x, this.cat.y - 60, t(`trap.${key}`), '#ff9a9a');
   }
 
   onFakeGoalStart() {
     this.cat.frozen = true;
     this.cat.body.setVelocityX(0);
-    this.hud.toast('恭喜通关！……吗？', 900, 0x3e8f5a);
-    this.onTrapTriggered('终点旗杆的"假通关"陷阱');
+    this.hud.toast(t('toast.fakeGoalStart'), 900, 0x3e8f5a);
+    this.onTrapTriggered('fakeGoal');
   }
 
   onFakeGoalReveal() {
     this.cat.frozen = false;
-    this.hud.toast('想得美 🐱　真正的终点还在右边', 2200, 0xb63c3c);
+    this.hud.toast(t('toast.fakeGoalReveal'), 2200, 0xb63c3c);
   }
 
   // =========================================================================
@@ -648,14 +682,14 @@ export default class LevelScene extends Phaser.Scene {
   // =========================================================================
   onCatJumped() {}
   onCatGrew() {
-    this.hud.toast('变大了！这次能挨一下 🐱', 1200, 0xd88034);
+    this.hud.toast(t('toast.grow'), 1200, 0xd88034);
     this.hud.setForm('big', 0);
   }
   onCatHurt() {
     this.hud.setForm('small', 0);
   }
   onStarStart() {
-    this.hud.toast('无敌！撞谁谁死 ✨', 1200, 0xde9a22);
+    this.hud.toast(t('toast.star'), 1200, 0xde9a22);
   }
   onStarEnd() {}
 
@@ -664,6 +698,7 @@ export default class LevelScene extends Phaser.Scene {
     this.hud.setDeaths(this.deaths);
     Save.addDeaths(this.levelId, 1);
     this.cameras.main.shake(240, 0.009);
+    this.dust(this.cat.x, this.cat.y, 8, 0xcfc4b4);
     this.isRestarting = true;
     this.cat.body.setAllowGravity(true);
     this.time.delayedCall(1150, () => this.restartLevel());
@@ -751,7 +786,7 @@ export default class LevelScene extends Phaser.Scene {
     kb.on('keydown-M', () => {
       const m = audio.toggleMute();
       Save.setMuted(m);
-      this.hud.toast(m ? '音效已关闭' : '音效已开启', 900);
+      this.hud.toast(m ? t('toast.soundOff') : t('toast.soundOn'), 900);
     });
   }
 

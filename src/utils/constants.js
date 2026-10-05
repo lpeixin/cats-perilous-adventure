@@ -172,27 +172,29 @@ export const SAVE_KEY = 'catmario.save.v1';
 
 // ---------------------------------------------------------------------------
 // 关卡列表
+// name/subtitle 存的是 i18n 键（见 src/utils/i18n.js 的 level.* 条目），
+// 显示时用 t() 翻译 —— 这样关卡名可以跟着界面语言切换。
 // ---------------------------------------------------------------------------
 export const LEVELS = [
   {
     id: 1,
     key: 'level1',
     file: 'src/levels/level1.json',
-    name: '第一关 · 后院初探',
-    subtitle: '看起来人畜无害的那种',
+    nameKey: 'level.1.name',
+    subtitleKey: 'level.1.subtitle',
   },
   {
     id: 2,
     key: 'level2',
     file: 'src/levels/level2.json',
-    name: '第二关 · 屋顶与水管',
-    subtitle: '这次连地板都不能信了',
+    nameKey: 'level.2.name',
+    subtitleKey: 'level.2.subtitle',
   },
   {
     id: 3,
     key: 'level3',
     file: 'src/levels/level3.json',
-    name: '第三关 · 太阳的恶意',
-    subtitle: '祝你活过三十秒',
+    nameKey: 'level.3.name',
+    subtitleKey: 'level.3.subtitle',
   },
 ];

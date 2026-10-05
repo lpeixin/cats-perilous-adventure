@@ -8,6 +8,7 @@ import { GAME_WIDTH, GAME_HEIGHT, COLORS, LEVELS } from '../utils/constants.js';
 import { audio } from '../utils/audio.js';
 import { formatTime, deathTaunt, Save } from '../utils/save.js';
 import { drawCard } from '../ui/Hud.js';
+import { t } from '../utils/i18n.js';
 
 const FONT = 'PingFang SC, Helvetica Neue, Arial, sans-serif';
 
@@ -27,8 +28,11 @@ export default class LevelCompleteScene extends Phaser.Scene {
 
     this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'bg_sky')
       .setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
+    this.add.image(GAME_WIDTH / 2, 0, 'skyGrad').setOrigin(0.5, 0);
     this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'bg_far')
       .setDisplaySize(GAME_WIDTH, GAME_HEIGHT).setAlpha(0.85);
+    // 暗角：结算页也要有和游戏内一致的"镜头感"
+    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'vignette');
 
     // 庆祝：撒金鱼
     this.time.addEvent({
@@ -37,12 +41,12 @@ export default class LevelCompleteScene extends Phaser.Scene {
       callback: () => this.spawnConfetti(),
     });
 
-    this.add.text(GAME_WIDTH / 2, 58, '通 关 ！', {
+    this.add.text(GAME_WIDTH / 2, 61, t('complete.title'), {
       fontFamily: FONT, fontSize: '52px', color: '#fffdfa', fontStyle: 'bold',
       stroke: '#3e2e32', strokeThickness: 9,
     }).setOrigin(0.5);
 
-    this.add.text(GAME_WIDTH / 2, 106, cfg.name, {
+    this.add.text(GAME_WIDTH / 2, 106, t(cfg.nameKey), {
       fontFamily: FONT, fontSize: '17px', color: '#fff0da',
       stroke: '#3e2e32', strokeThickness: 4,
     }).setOrigin(0.5);
@@ -63,7 +67,7 @@ export default class LevelCompleteScene extends Phaser.Scene {
     const deathNum = this.add.text(x + 92, bigY - 22, '0', {
       fontFamily: FONT, fontSize: '52px', color: '#b63c3c', fontStyle: 'bold',
     });
-    this.add.text(x + 96 + 70, bigY + 14, '次死亡', {
+    this.add.text(x + 96 + 70, bigY + 14, t('complete.deaths'), {
       fontFamily: FONT, fontSize: '16px', color: '#8b7c78',
     });
 
@@ -74,18 +78,18 @@ export default class LevelCompleteScene extends Phaser.Scene {
       onComplete: () => deathNum.setText(String(d.deaths)),
     });
 
-    this.add.text(x + 30, bigY + 48, taunt.text, {
+    this.add.text(x + 30, bigY + 48, t(taunt.key, taunt.params), {
       fontFamily: FONT, fontSize: '16px', color: this.tauntColor(taunt.tier),
       wordWrap: { width: w - 60 },
     });
 
     // 明细
     const rows = [
-      ['用时', formatTime(d.timeMs), d.isBestTime ? '新纪录！' : ''],
-      ['收集金鱼', `${d.coins} 条`, ''],
-      ['得分', `${d.score}`, ''],
-      ['历史最佳用时', formatTime(d.record.bestTimeMs), ''],
-      ['历史最少死亡', `${d.record.fewestDeaths} 次`, ''],
+      [t('complete.time'), formatTime(d.timeMs), d.isBestTime ? t('complete.newRecord') : ''],
+      [t('complete.fish'), t('complete.fishVal', { n: d.coins }), ''],
+      [t('complete.score'), `${d.score}`, ''],
+      [t('complete.bestTime'), formatTime(d.record.bestTimeMs), ''],
+      [t('complete.fewestDeaths'), t('complete.deathsN', { n: d.record.fewestDeaths }), ''],
     ];
     let ry = y + 150;
     rows.forEach(([k, v, tag], i) => {
@@ -109,11 +113,11 @@ export default class LevelCompleteScene extends Phaser.Scene {
     const traps = Object.entries(d.trapLog || {}).sort((a, b) => b[1] - a[1]);
     if (traps.length) {
       const ty = y + h + 16;
-      this.add.text(GAME_WIDTH / 2, ty, '这一关坑过你的机关：', {
+      this.add.text(GAME_WIDTH / 2, ty, t('complete.traps'), {
         fontFamily: FONT, fontSize: '13px', color: '#3e2e32', fontStyle: 'bold',
       }).setOrigin(0.5);
       this.add.text(GAME_WIDTH / 2, ty + 22,
-        traps.map(([k, v]) => `${k} ×${v}`).join('　·　'), {
+        traps.map(([k, v]) => `${t(`trap.${k}`)} ×${v}`).join('　·　'), {
           fontFamily: FONT, fontSize: '12.5px', color: '#8b7c78',
           wordWrap: { width: GAME_WIDTH - 160 }, align: 'center',
         }).setOrigin(0.5, 0);
@@ -122,8 +126,7 @@ export default class LevelCompleteScene extends Phaser.Scene {
     // —— 底部操作 ——
     const hasNext = d.levelId < 3;
     this.hint = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 40,
-      hasNext ? 'Enter 进入下一关　·　R 重玩本关　·　Esc 回主菜单'
-              : 'Enter 回主菜单　·　R 重玩本关', {
+      hasNext ? t('complete.hintNext') : t('complete.hintMenu'), {
         fontFamily: FONT, fontSize: '14px', color: '#fffdfa',
         stroke: '#3e2e32', strokeThickness: 4,
       }).setOrigin(0.5);

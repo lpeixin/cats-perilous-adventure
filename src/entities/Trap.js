@@ -136,7 +136,7 @@ export class SkyDropper {
     body.setVelocityY(120);
     audio.play('crash');
     this.scene.cameras.main.shake(160, 0.004);
-    this.scene.onTrapTriggered('伪装天空掉落物');
+    this.scene.onTrapTriggered('skyDropper');
   }
 
   /** 砸到地面：碎裂、震屏，短暂停留后消散 */
@@ -258,7 +258,7 @@ export class ConveyorTile {
 
   start() {
     this.state = 'sinking';
-    this.scene.onTrapTriggered('隐藏向下传送带');
+    this.scene.onTrapTriggered('conveyor');
     // 不做任何提示音 —— 就是要"悄悄地把玩家送走"
     const dy = TRAP.CONVEYOR_DISTANCE * TILE;
     this.scene.tweens.add({
@@ -274,7 +274,7 @@ export class ConveyorTile {
       onComplete: () => {
         this.state = 'gone';
         this.scene.removeSolid(this.tile);
-        this.scene.onTrapSprung('隐藏向下传送带');
+        this.scene.onTrapSprung('conveyor');
       },
     });
   }
@@ -326,7 +326,7 @@ export class PipeAmbush {
     });
     audio.play('pop');
     this.scene.cameras.main.shake(140, 0.005);
-    this.scene.onTrapTriggered('水管弹出敌人');
+    this.scene.onTrapTriggered('pipeAmbush');
   }
 }
 

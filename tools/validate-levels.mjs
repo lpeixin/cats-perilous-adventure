@@ -46,13 +46,15 @@ console.log('\n【图例检查】');
 // 2) 逐关解析
 // ---------------------------------------------------------------------------
 for (const cfg of LEVELS) {
-  console.log(`\n【关卡 ${cfg.id}】${cfg.name}`);
+  console.log(`\n【关卡 ${cfg.id}】${cfg.nameKey}`);
 
   const file = path.join(ROOT, cfg.file);
   if (!fs.existsSync(file)) { fail(`找不到 ${cfg.file}`); continue; }
 
   const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
   const level = parseLevel(raw);
+
+  if (raw.name) console.log(`  （关卡文件标注：${raw.name}）`);
 
   ok(`尺寸 ${level.width} × ${level.height} 格（${level.width * TILE} × ${level.height * TILE} px）`);
 

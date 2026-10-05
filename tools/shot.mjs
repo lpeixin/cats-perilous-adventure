@@ -5,9 +5,10 @@
  * 这个脚本把游戏真的跑起来、真的渲染，然后按预设的几个机位截图，
  * 用来肉眼检查美术、UI、关卡观感。
  *
- * 用法：
- *   node tools/shot.mjs                    （需要先 npm run dev 起服务）
- *   node tools/shot.mjs --only menu       只截菜单
+ * 支持中英双语各截一套（游戏内 ?lang= 参数强制指定语言）：
+ *   node tools/shot.mjs                     默认 en + zh 两套 → assets/preview/en|zh/
+ *   node tools/shot.mjs --lang zh           只截中文
+ *   node tools/shot.mjs --only menu         只截菜单
  *   node tools/shot.mjs --out assets/preview
  */
 import fs from 'node:fs';
@@ -25,8 +26,9 @@ const getArg = (name, dflt) => {
 };
 
 const BASE = getArg('--url', 'http://127.0.0.1:5173/index.html');
-const OUT_DIR = path.resolve(ROOT, getArg('--out', 'assets/preview'));
+const OUT_ROOT = path.resolve(ROOT, getArg('--out', 'assets/preview'));
 const ONLY = getArg('--only', '');
+const LANGS = getArg('--lang', 'en,zh').split(',').filter((l) => ['en', 'zh'].includes(l));
 
 /** 预设机位：col 是希望猫所在的格号，wait 是留多少时间让相机跟上 */
 const SHOTS = [
@@ -40,21 +42,17 @@ const SHOTS = [
   { name: 'level3-start', level: 3, col: 12, wait: 1800, desc: '第三关：太阳的恶意' },
 ];
 
-async function main() {
-  fs.mkdirSync(OUT_DIR, { recursive: true });
+/** 用某个语言跑一遍全部机位 */
+async function shootLang(lang) {
+  const outDir = path.join(OUT_ROOT, lang);
+  fs.mkdirSync(outDir, { recursive: true });
 
-  let session = null;
-  const cleanup = () => { if (session) session.kill(); };
-  process.on('exit', cleanup);
-  process.on('SIGINT', () => { cleanup(); process.exit(130); });
-
-  const picked = SHOTS.filter((s) => !ONLY || s.name.includes(ONLY));
-  const written = [];
+  // 用 URL 参数强制语言（i18n 的最高优先级），保证截图语言可控
+  const url = `${BASE}${BASE.includes('?') ? '&' : '?'}lang=${lang}`;
+  const session = await launch({ url, port: 9344 + LANGS.indexOf(lang), windowSize: '1000,620' });
+  const { cdp } = session;
 
   try {
-    session = await launch({ url: BASE, port: 9344, windowSize: '1000,620' });
-    const { cdp } = session;
-
     const ready = await cdp.waitFor(
       "!!window.__CAT_MARIO__ && window.__CAT_MARIO__.scene.getScene('Menu') && window.__CAT_MARIO__.scene.getScene('Menu').scene.isActive()",
       40000);
@@ -62,6 +60,9 @@ async function main() {
 
     // 用真实渲染：不要 sleep 主循环，让 Phaser 自己跑 rAF
     await sleep(1200);
+
+    const picked = SHOTS.filter((s) => !ONLY || s.name.includes(ONLY));
+    const written = [];
 
     for (const shot of picked) {
       if (shot.scene === 'menu') {
@@ -87,19 +88,28 @@ async function main() {
       }
 
       const res = await cdp.send('Page.captureScreenshot', { format: 'png' }, 30000);
-      const file = path.join(OUT_DIR, `${shot.name}.png`);
+      const file = path.join(outDir, `${shot.name}.png`);
       fs.writeFileSync(file, Buffer.from(res.data, 'base64'));
       written.push({ file, desc: shot.desc });
-      console.log('📸 ' + path.relative(ROOT, file) + '  —— ' + shot.desc);
+      console.log('📸 [' + lang + '] ' + path.relative(ROOT, file) + '  —— ' + shot.desc);
     }
 
-    console.log(`\n共 ${written.length} 张，输出目录：${path.relative(ROOT, OUT_DIR)}`);
-  } catch (err) {
-    console.error('❌ ' + (err && err.message));
-    process.exitCode = 2;
+    return written;
   } finally {
-    cleanup();
+    session.kill();
   }
 }
 
-main();
+async function main() {
+  const total = [];
+  for (const lang of LANGS) {
+    console.log(`\n=== 语言 ${lang} ===`);
+    total.push(...await shootLang(lang));
+  }
+  console.log(`\n共 ${total.length} 张，输出目录：${path.relative(ROOT, OUT_ROOT)}/{en,zh}/`);
+}
+
+main().catch((err) => {
+  console.error('❌ ' + (err && err.message));
+  process.exitCode = 2;
+});

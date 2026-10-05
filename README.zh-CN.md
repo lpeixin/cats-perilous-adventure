@@ -15,21 +15,24 @@
 
 ## 游戏画面
 
+下面的截图全部来自**中文界面**的游戏实机画面
+（`node tools/shot.mjs` 会自动截取中英两套；英文 README 使用英文那套）。
+
 ### 主菜单
 
-![主菜单](assets/preview/menu.png)
+![主菜单](assets/preview/zh/menu.png)
 
 看起来人畜无害的标题画面，左下角却如实记录着你的累计死亡次数。
 
 ### 第一关 · 后院初探
 
-![第一关开局](assets/preview/level1-start.png)
+![第一关开局](assets/preview/zh/level1-start.png)
 
 干净的草地、金鱼、问号砖，还有一只慢悠悠的毛线球怪 —— 全是障眼法。
 
 ### 水管区 · 伏兵登场
 
-![水管区的水管伏兵](assets/preview/level1-pipe.png)
+![水管区的水管伏兵](assets/preview/zh/level1-pipe.png)
 
 刚被水管里弹出来的毛线球阴死一次，右上角死亡数 +1，
 系统还贴心地把它记进了你的"黑名单"。
@@ -74,7 +77,21 @@ npm run build:mac    # 产出 .dmg / .zip 到 dist/
 
 ---
 
-## 3. 操作方式
+## 3. 语言 / Language
+
+游戏内置**中英双语界面** —— 菜单、HUD、提示语、死亡调侃全部做了翻译：
+
+- 首次进入会按浏览器语言自动选择（中文浏览器默认中文，其它默认英文）；
+- 随时可以在**主菜单**里切换：`Language / 语言` 那一行，或者直接按 **`L`** 键；
+- 选择会记进存档（`localStorage`），下次启动保持不变；
+- 也可以用 URL 参数强制指定：`http://localhost:5173/?lang=zh` 或 `?lang=en`
+  （方便分享链接；`tools/shot.mjs` 截图工具也是靠它截出中英两套图的）。
+
+全部文案集中在 `src/utils/i18n.js` 一个字典里。想加第三种语言，在那里加一个语言块即可。
+
+---
+
+## 4. 操作方式
 
 | 按键 | 作用 |
 | --- | --- |
@@ -85,13 +102,14 @@ npm run build:mac    # 产出 .dmg / .zip 到 dist/
 | `Shift` | 奔跑（速度 200 → 310，跳得也更高一点） |
 | `P` / `Esc` | 暂停 |
 | `R` | **立刻重开本关**（死亡率高，所以重试循环做到最快，没有多余过场） |
+| `L` | 切换中 / 英界面 |
 | `M` | 静音 / 取消静音 |
 
 菜单里用 `↑↓` 选择、`Enter` / `空格` 确认、`Esc` 返回。
 
 ---
 
-## 4. 玩法规则
+## 5. 玩法规则
 
 **手感（这几条是"跟手不别扭"的关键，都实现了）**
 
@@ -99,6 +117,7 @@ npm run build:mac    # 产出 .dmg / .zip 到 dist/
 - **土狼时间**：离开平台边缘后 ~100ms 内仍然可以起跳
 - **跳跃缓冲**：落地前 ~100ms 按下的跳跃会被记住并自动补发
 - **可变跳跃高度**：松开跳跃键立刻截断上升速度
+- **动作反馈**：跳跃 / 落地的挤压拉伸、落地尘土、镜头震动 —— 纯视觉演出，不改变任何碰撞判定
 
 **形态状态机**
 
@@ -122,7 +141,7 @@ npm run build:mac    # 产出 .dmg / .zip 到 dist/
 
 ---
 
-## 5. 关卡与陷阱
+## 6. 关卡与陷阱
 
 三关，每关 200–220 格宽（约 10 个屏幕），每关都埋了 **7 种**陷阱。
 
@@ -146,7 +165,7 @@ npm run build:mac    # 产出 .dmg / .zip 到 dist/
 
 ---
 
-## 6. 项目结构
+## 7. 项目结构
 
 ```
 cat-mario/
@@ -165,6 +184,7 @@ cat-mario/
 │   ├── levels/level{1,2,3}.json   # ASCII 字符画写的关卡
 │   └── utils/
 │       ├── constants.js       # 所有魔法数字的唯一来源
+│       ├── i18n.js            # 中英双语字典 + 语言选择逻辑
 │       ├── levelLoader.js     # 关卡解析（纯数据、不依赖 Phaser）
 │       ├── animations.js
 │       ├── audio.js           # Web Audio 实时合成音效 + 芯片音乐
@@ -172,6 +192,8 @@ cat-mario/
 ├── assets/                    # 全部由脚本生成
 │   ├── sprites/ tiles/ ui/
 │   └── preview/               # 《美术风格小样》+ 游戏截图
+│       ├── en/                # 英文界面的截图（README.md 使用）
+│       └── zh/                # 中文界面的截图（README.zh-CN.md 使用）
 ├── tools/
 │   ├── gen_assets.py          # 美术素材生成器（Pillow）
 │   ├── build_levels.py        # 关卡生成器（Python DSL）
@@ -179,7 +201,7 @@ cat-mario/
 │   ├── trap-report.mjs        # 生成陷阱清单
 │   ├── smoke-test.html        # 无头冒烟测试（65 项）
 │   ├── run-smoke.mjs          # 测试驱动器
-│   └── shot.mjs               # 游戏截图
+│   └── shot.mjs               # 游戏截图（支持中英两套）
 └── scripts/
     ├── serve.cjs              # 零依赖静态服务器
     └── sync-phaser.cjs
@@ -187,7 +209,7 @@ cat-mario/
 
 ---
 
-## 7. 常用命令
+## 8. 常用命令
 
 | 命令 | 说明 |
 | --- | --- |
@@ -197,6 +219,7 @@ cat-mario/
 | `npm run traps` | 打印/生成每关的陷阱清单 |
 | `npm run gen:levels` | 重新生成 `src/levels/*.json` |
 | `npm run gen:assets` | 重新生成全部美术素材（需要 Python + Pillow） |
+| `node tools/shot.mjs` | 截取游戏截图（`en/`、`zh/` 两套；支持 `--lang`、`--only`） |
 | `npm run electron` | 本地跑 Electron 桌面版 |
 | `npm run build:mac` | 打包 macOS `.dmg` / `.zip` |
 
@@ -207,7 +230,7 @@ cat-mario/
 
 ---
 
-## 8. 怎么改关卡 / 加陷阱
+## 9. 怎么改关卡 / 加陷阱
 
 关卡是**ASCII 字符画**，直接在 `src/levels/level1.json` 里改就能看懂：
 
@@ -241,9 +264,12 @@ L.fake_goal(163)             # 假通关旗杆
 想调"某个陷阱有多阴"，改 `src/utils/constants.js` 里的 `TRAP` 参数（全关卡生效），
 不要在每个关卡里硬编码。
 
+想改**界面文案**（任何语言），编辑 `src/utils/i18n.js` 里的字典 ——
+场景代码里不允许出现硬编码的界面文案。
+
 ---
 
-## 9. 关于 `pixelArt` 的一个取舍
+## 10. 关于 `pixelArt` 的一个取舍
 
 需求文档建议开启 `pixelArt: true`。本项目**没有开**，原因写在 `src/utils/constants.js` 里：
 
@@ -260,9 +286,9 @@ export const PIXEL_ART = false;   // 抗锯齿的"高清像素风"素材，必�
 
 ---
 
-## 10. 已知限制
+## 11. 已知限制
 
 - 目前是**单人本地游戏**，没有联机、没有排行榜。
 - 音效是实时合成的，不同浏览器 / 系统音量下音色会略有差异。
 - `npm run build:mac` 首次运行需要联网下载 Electron 二进制；之后打包可离线。
-- 关卡只有 3 关。按第 8 节的方式加关卡很容易，欢迎继续埋坑 🐱
+- 关卡只有 3 关。按第 9 节的方式加关卡很容易，欢迎继续埋坑 🐱

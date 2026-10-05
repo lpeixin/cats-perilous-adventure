@@ -7,6 +7,7 @@ import { GAME_WIDTH, GAME_HEIGHT, COLORS } from '../utils/constants.js';
 import { audio } from '../utils/audio.js';
 import { formatTime } from '../utils/save.js';
 import { drawCard } from '../ui/Hud.js';
+import { t } from '../utils/i18n.js';
 
 const FONT = 'PingFang SC, Helvetica Neue, Arial, sans-serif';
 
@@ -30,19 +31,19 @@ export default class PauseScene extends Phaser.Scene {
     const y = GAME_HEIGHT / 2 - h / 2;
     drawCard(this, x, y, w, h, { radius: 20, alpha: 0.98 });
 
-    this.add.text(GAME_WIDTH / 2, y + 34, '暂 停', {
+    this.add.text(GAME_WIDTH / 2, y + 34, t('pause.title'), {
       fontFamily: FONT, fontSize: '30px', color: '#3e2e32', fontStyle: 'bold',
     }).setOrigin(0.5);
 
     this.add.text(GAME_WIDTH / 2, y + 74,
-      `本关已死亡 ${this.info.deaths ?? 0} 次　·　用时 ${formatTime(this.info.elapsed ?? 0)}`, {
+      t('pause.stats', { n: this.info.deaths ?? 0, time: formatTime(this.info.elapsed ?? 0) }), {
         fontFamily: FONT, fontSize: '13px', color: '#8b7c78',
       }).setOrigin(0.5);
 
     this.rows = [
-      { label: '继续游戏', action: () => this.resume() },
-      { label: '重开本关', action: () => this.restart() },
-      { label: '放弃本关', danger: true, action: () => this.abandon() },
+      { label: t('pause.resume'), action: () => this.resume() },
+      { label: t('pause.restart'), action: () => this.restart() },
+      { label: t('pause.abandon'), danger: true, action: () => this.abandon() },
     ];
 
     this.rows.forEach((row, i) => {

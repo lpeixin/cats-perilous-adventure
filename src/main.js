@@ -3,6 +3,7 @@
  * 游戏入口 —— Phaser 配置 + 场景注册
  */
 import { GAME_WIDTH, GAME_HEIGHT, PIXEL_ART, PHYS, COLORS } from './utils/constants.js';
+import { initLang } from './utils/i18n.js';
 
 import BootScene from './scenes/BootScene.js';
 import PreloadScene from './scenes/PreloadScene.js';
@@ -11,6 +12,9 @@ import LevelScene from './scenes/LevelScene.js';
 import LevelCompleteScene from './scenes/LevelCompleteScene.js';
 import PauseScene from './scenes/PauseScene.js';
 import GameOverScene from './scenes/GameOverScene.js';
+
+// 决定界面语言（URL ?lang= → 存档 → 浏览器语言），必须在任何场景启动前完成
+initLang();
 
 const config = {
   type: Phaser.AUTO,
@@ -25,6 +29,8 @@ const config = {
     autoCenter: Phaser.Scale.CENTER_BOTH,
     width: GAME_WIDTH,
     height: GAME_HEIGHT,
+    // 画布尺寸取整到整数像素，避免 FIT 缩放时出现半像素模糊
+    autoRound: true,
   },
 
   // 本项目用的是"高分辨率扁平卡通"素材（4× 超采样后降采样），
