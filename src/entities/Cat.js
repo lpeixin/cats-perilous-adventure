@@ -330,6 +330,28 @@ export default class Cat extends Phaser.Physics.Arcade.Sprite {
     if (!onGround) this.fallPeak = Math.max(this.fallPeak, body.velocity.y);
     this.wasOnGround = onGround;
 
+    // —— 冲刺 / 无敌星残影特效 ——
+    const speedAbs = Math.abs(body.velocity.x);
+    if ((this.isInvincible || (this.runDown && speedAbs > PHYS.WALK_SPEED + 45))
+        && time - (this._lastTrailAt || 0) > (this.isInvincible ? 55 : 85)) {
+      this._lastTrailAt = time;
+      const ghost = this.scene.add.image(this.x, this.y, this.texture.key, this.frame.name)
+        .setOrigin(0.5, ORIGIN_Y)
+        .setFlipX(this.flipX)
+        .setDepth(this.depth - 1)
+        .setAlpha(this.isInvincible ? 0.45 : 0.26)
+        .setTint(this.isInvincible ? this.tintTopLeft : 0xffcfa0);
+      this.scene.tweens.add({
+        targets: ghost,
+        alpha: 0,
+        scaleX: 0.88,
+        scaleY: 0.88,
+        duration: 180,
+        ease: 'Quad.easeOut',
+        onComplete: () => ghost.destroy(),
+      });
+    }
+
     this.updateAnimState(onGround);
   }
 

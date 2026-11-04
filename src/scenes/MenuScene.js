@@ -1,10 +1,10 @@
 /**
- * MenuScene —— 主菜单
+ * MenuScene —— 工作室级主菜单场景
  * ---------------------------------------------------------------
- * 三层视差滚动背景 + 圆角卡片菜单。纯键盘操作（↑↓ 选择，Enter/Space 确认，Esc 返回）。
- * L 键或菜单里的 Language 行可以切换中英文，切换后场景重启、整菜单重建。
+ * 含：三层视差背景 + 丁达尔体积光 + 实景草地舞台（木栅栏、花丛、鲤鱼旗）+
+ * 立体徽章标题 + 支持键盘（↑↓/WS + Enter/Space/Esc）与鼠标悬停点击的立体按钮菜单。
  */
-import { GAME_WIDTH, GAME_HEIGHT, COLORS, LEVELS } from '../utils/constants.js';
+import { GAME_WIDTH, GAME_HEIGHT, COLORS, LEVELS, TILE } from '../utils/constants.js';
 import { audio } from '../utils/audio.js';
 import { Save, formatTime } from '../utils/save.js';
 import { drawCard } from '../ui/Hud.js';
@@ -13,10 +13,10 @@ import { t, toggleLang } from '../utils/i18n.js';
 const FONT = 'PingFang SC, Helvetica Neue, Arial, sans-serif';
 
 const MENU = {
-  width: 470,
+  width: 460,
   height: 50,
   pitch: 56,
-  startY: 240,
+  startY: 214,
 };
 
 export default class MenuScene extends Phaser.Scene {
@@ -38,114 +38,187 @@ export default class MenuScene extends Phaser.Scene {
 
     audio.startMusic();
 
-    this.cameras.main.fadeIn(320, 43, 32, 36);
+    this.cameras.main.fadeIn(320, 36, 26, 30);
   }
 
   // -------------------------------------------------------------------------
+  // 1. 实景舞台背景（天空 + 远山 + 丁达尔光束 + 森林 + 前景草地生态舞台）
+  // -------------------------------------------------------------------------
   buildBackground() {
-    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'bg_sky')
+    const skyKey = this.textures.exists('bg_sky_1') ? 'bg_sky_1' : 'bg_sky';
+    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, skyKey)
       .setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
-    // 顶部渐变：给平涂的蓝天一点纵深
     this.add.image(GAME_WIDTH / 2, 0, 'skyGrad').setOrigin(0.5, 0);
 
     this.far = this.add.tileSprite(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 'bg_far')
-      .setDisplaySize(GAME_WIDTH, GAME_HEIGHT).setAlpha(0.9);
+      .setDisplaySize(GAME_WIDTH, GAME_HEIGHT).setAlpha(0.95);
+
+    if (this.textures.exists('sunbeams')) {
+      this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'sunbeams')
+        .setAlpha(0.82);
+    }
+
     this.mid = this.add.tileSprite(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 'bg_mid')
       .setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
 
-    // 几只飘浮的云，增加"这游戏很无害"的错觉
+    // 飘浮的云朵与暖阳
     this.clouds = [];
-    for (let i = 0; i < 5; i++) {
-      const c = this.add.image(
-        Phaser.Math.Between(0, GAME_WIDTH),
-        Phaser.Math.Between(50, 220),
-        i % 3 === 0 ? 'sun_soft' : 'cloud_soft'
-      ).setAlpha(0.85).setScale(Phaser.Math.FloatBetween(0.5, 0.9));
-      c.speed = Phaser.Math.FloatBetween(6, 18);
+    const cloudConfigs = [
+      { x: 130, y: 84, key: 'sun_soft', scale: 0.86, speed: 5 },
+      { x: 310, y: 112, key: 'cloud_soft', scale: 0.72, speed: 12 },
+      { x: 690, y: 78, key: 'cloud_soft', scale: 0.85, speed: 10 },
+      { x: 850, y: 145, key: 'cloud_soft', scale: 0.62, speed: 15 },
+    ];
+    for (const cfg of cloudConfigs) {
+      const c = this.add.image(cfg.x, cfg.y, cfg.key)
+        .setAlpha(0.92).setScale(cfg.scale);
+      c.speed = cfg.speed;
       this.clouds.push(c);
     }
 
-    // 底部草地色带
-    const g = this.add.graphics();
-    g.fillStyle(0x68bc6a, 1);
-    g.fillRect(0, GAME_HEIGHT - 92, GAME_WIDTH, 92);
-    g.fillStyle(0x54a458, 1);
-    g.fillRect(0, GAME_HEIGHT - 92, GAME_WIDTH, 10);
-    g.fillStyle(0x8ed48c, 0.7);
-    for (let x = 0; x < GAME_WIDTH; x += 24) {
-      g.fillTriangle(x, GAME_HEIGHT - 92, x + 12, GAME_HEIGHT - 104, x + 24, GAME_HEIGHT - 92);
+    // 底部实景草地舞台（使用真实 ground_top 与 ground_fill 瓦片铺陈）
+    const groundY = GAME_HEIGHT - 84;
+    for (let x = 0; x < GAME_WIDTH + TILE; x += TILE) {
+      this.add.image(x + TILE / 2, groundY + TILE / 2, 'ground_top').setDepth(2);
+      this.add.image(x + TILE / 2, groundY + TILE + TILE / 2, 'ground_fill').setDepth(2);
     }
-    g.fillStyle(0x2b2024, 0.10);
-    g.fillRect(0, GAME_HEIGHT - 92, GAME_WIDTH, 92);
+
+    // 左右两侧舞台生态布景（不遮挡中央菜单）
+    if (this.textures.exists('prop_fence')) {
+      this.add.image(86, groundY + 4, 'prop_fence').setOrigin(0.5, 1).setDepth(1.5);
+      this.add.image(874, groundY + 4, 'prop_fence').setOrigin(0.5, 1).setDepth(1.5);
+    }
+    if (this.textures.exists('prop_bush')) {
+      this.add.image(28, groundY + 5, 'prop_bush').setOrigin(0.5, 1).setDepth(1.6);
+      this.add.image(765, groundY + 5, 'prop_bush').setOrigin(0.5, 1).setDepth(1.6);
+    }
+    if (this.textures.exists('prop_flowers_1')) {
+      this.add.image(68, groundY + 3, 'prop_flowers_1').setOrigin(0.5, 1).setDepth(2.5);
+      this.add.image(796, groundY + 3, 'prop_flowers_2').setOrigin(0.5, 1).setDepth(2.5);
+      this.add.image(918, groundY + 3, 'prop_flowers_1').setOrigin(0.5, 1).setDepth(2.5);
+    }
+    if (this.textures.exists('prop_grass')) {
+      this.add.image(118, groundY + 3, 'prop_grass').setOrigin(0.5, 1).setDepth(2.5);
+      this.add.image(730, groundY + 3, 'prop_grass').setOrigin(0.5, 1).setDepth(2.5);
+    }
+
+    // 右侧舞台：终点鲤鱼旗杆与漂浮金鱼币，与左侧主角遥相呼应
+    this.add.image(848, groundY + 4, 'goal_pole')
+      .setOrigin(0.5, 1).setScale(0.92).setDepth(1.8);
+    const flag = this.add.sprite(848 + 24, groundY - 132, 'goal_flagfish', 0)
+      .setScale(0.92).setDepth(1.9);
+    if (this.anims.exists('flagfish-wave')) flag.play('flagfish-wave');
+
+    const coin = this.add.sprite(776, groundY - 58, 'item_goldfish', 0).setDepth(2.5);
+    if (this.anims.exists('goldfish-swim')) coin.play('goldfish-swim');
+    this.tweens.add({
+      targets: coin, y: groundY - 68, duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+    });
 
     // 暗角：四周轻轻压暗，视线更聚焦
-    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'vignette');
+    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'vignette').setDepth(4);
   }
 
+  // -------------------------------------------------------------------------
+  // 2. 角色与工作室级立体徽章标题
+  // -------------------------------------------------------------------------
   buildTitle() {
-    // 两只主角猫站在草地上（大猫 + 小猫）。
-    // 注意 x 别放在菜单按钮正下方，否则会被按钮压住。
-    this.hero = this.add.sprite(GAME_WIDTH * 0.155, GAME_HEIGHT - 90, 'cat_big', 0)
-      .setOrigin(0.5, 1).setScale(1.6);
+    const groundY = GAME_HEIGHT - 82;
+
+    // 左侧舞台：大猫与小猫整装待发
+    this.hero = this.add.sprite(158, groundY, 'cat_big', 0)
+      .setOrigin(0.5, 1).setScale(1.32).setDepth(3);
     this.hero.play('big-idle');
     this.tweens.add({
-      targets: this.hero, y: GAME_HEIGHT - 94, duration: 900,
+      targets: this.hero, y: groundY - 4, duration: 920,
       yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     });
 
-    this.heroSmall = this.add.sprite(GAME_WIDTH * 0.155 + 74, GAME_HEIGHT - 90, 'cat_small', 0)
-      .setOrigin(0.5, 1).setScale(1.25);
+    this.heroSmall = this.add.sprite(222, groundY, 'cat_small', 0)
+      .setOrigin(0.5, 1).setScale(1.12).setDepth(3);
     this.heroSmall.play('small-idle');
     this.tweens.add({
-      targets: this.heroSmall, y: GAME_HEIGHT - 93, duration: 760, delay: 240,
+      targets: this.heroSmall, y: groundY - 3, duration: 780, delay: 220,
       yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     });
 
-    // 标题的柔和投影：同一文案错位重画一层深色，再叠主体
+    const cx = GAME_WIDTH / 2;
+    const bannerG = this.add.graphics().setDepth(3);
+
+    // 副标题胶囊底托
+    bannerG.fillStyle(0x2d1f24, 0.78);
+    bannerG.fillRoundedRect(cx - 210, 118, 420, 28, 14);
+    bannerG.lineStyle(1.5, 0xffd26a, 0.75);
+    bannerG.strokeRoundedRect(cx - 210, 118, 420, 28, 14);
+
+    // 主标题（三层立体字：深色远影 → 暖金描边底 → 亮白主体，英文自动字号自适应）
     const title = t('game.title');
-    this.add.text(GAME_WIDTH / 2 + 3, 91, title, {
-      fontFamily: FONT, fontSize: '58px', color: '#2b2024', fontStyle: 'bold',
-      stroke: '#2b2024', strokeThickness: 8,
-    }).setOrigin(0.5).setAlpha(0.45);
+    const titleSize = title.length > 10 ? '45px' : '56px';
+    this.add.text(cx + 3, 78, title, {
+      fontFamily: FONT, fontSize: titleSize, color: '#1d1216', fontStyle: 'bold',
+      stroke: '#1d1216', strokeThickness: 12,
+    }).setOrigin(0.5).setAlpha(0.55).setDepth(3);
 
-    this.add.text(GAME_WIDTH / 2, 88, title, {
-      fontFamily: FONT, fontSize: '58px', color: '#fffdfa', fontStyle: 'bold',
-      stroke: '#3e2e32', strokeThickness: 8,
-    }).setOrigin(0.5);
+    this.add.text(cx, 74, title, {
+      fontFamily: FONT, fontSize: titleSize, color: '#fffdf8', fontStyle: 'bold',
+      stroke: '#3a2429', strokeThickness: 9,
+    }).setOrigin(0.5).setDepth(3);
 
-    this.add.text(GAME_WIDTH / 2, 140, t('game.titleAlt'), {
-      fontFamily: 'Helvetica Neue, Arial, sans-serif', fontSize: '17px',
-      color: '#fff0da', letterSpacing: 4, stroke: '#3e2e32', strokeThickness: 4,
-    }).setOrigin(0.5);
+    this.add.text(cx, 132, t('game.titleAlt'), {
+      fontFamily: 'Helvetica Neue, Arial, sans-serif', fontSize: '14px',
+      color: '#ffe29c', letterSpacing: 4, fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(3);
 
-    this.add.text(GAME_WIDTH / 2, 176, t('game.tagline'), {
-      fontFamily: FONT, fontSize: '14px', color: '#fff0da',
-      stroke: '#3e2e32', strokeThickness: 3,
-    }).setOrigin(0.5);
+    this.add.text(cx, 168, t('game.tagline'), {
+      fontFamily: FONT, fontSize: '13.5px', color: '#fff8ec', fontStyle: 'bold',
+      stroke: '#2d1e22', strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(3);
   }
 
+  // -------------------------------------------------------------------------
+  // 3. 页脚与顶部状态胶囊（宽度随中英双语自适应）
+  // -------------------------------------------------------------------------
   buildFooter() {
     const data = Save.all();
-    this.add.text(20, GAME_HEIGHT - 30, t('footer.stats', {
+    const pillG = this.add.graphics().setDepth(5);
+
+    // 左下：累计统计胶囊
+    const statsTxt = this.add.text(28, GAME_HEIGHT - 25, t('footer.stats', {
       n: data.totalDeaths, fish: data.totalFish,
     }), {
-      fontFamily: FONT, fontSize: '13px', color: '#fffdfa',
-      stroke: '#3e2e32', strokeThickness: 3,
-    });
+      fontFamily: FONT, fontSize: '12.5px', color: '#fff8ee', fontStyle: 'bold',
+    }).setOrigin(0, 0.5).setDepth(6);
+    const statsW = Math.ceil(statsTxt.width) + 28;
+    pillG.fillStyle(0x21161a, 0.80);
+    pillG.fillRoundedRect(14, GAME_HEIGHT - 40, statsW, 30, 15);
+    pillG.lineStyle(1.5, 0xffe4b8, 0.35);
+    pillG.strokeRoundedRect(14, GAME_HEIGHT - 40, statsW, 30, 15);
 
+    // 右下：音效开关胶囊（支持点击切换）
     const muted = audio.muted;
-    this.muteText = this.add.text(GAME_WIDTH - 20, GAME_HEIGHT - 30,
+    this.muteText = this.add.text(GAME_WIDTH - 28, GAME_HEIGHT - 25,
       muted ? t('footer.soundOff') : t('footer.soundOn'), {
-        fontFamily: FONT, fontSize: '13px', color: '#fffdfa',
-        stroke: '#3e2e32', strokeThickness: 3,
-      }).setOrigin(1, 0);
+        fontFamily: FONT, fontSize: '12.5px', color: '#ffe49c', fontStyle: 'bold',
+      }).setOrigin(1, 0.5).setDepth(6)
+      .setInteractive({ useHandCursor: true });
+    this.muteText.on('pointerdown', () => this.toggleMute());
+    const muteW = Math.max(146, Math.ceil(this.muteText.width) + 28);
+    pillG.fillStyle(0x21161a, 0.80);
+    pillG.fillRoundedRect(GAME_WIDTH - 14 - muteW, GAME_HEIGHT - 40, muteW, 30, 15);
+    pillG.lineStyle(1.5, 0xffe4b8, 0.35);
+    pillG.strokeRoundedRect(GAME_WIDTH - 14 - muteW, GAME_HEIGHT - 40, muteW, 30, 15);
 
-    this.add.text(GAME_WIDTH - 20, 18, t('footer.keys'), {
-      fontFamily: FONT, fontSize: '12px', color: '#fffdfa',
-      stroke: '#3e2e32', strokeThickness: 3,
-    }).setOrigin(1, 0);
+    // 右上：按键提示胶囊
+    const keysTxt = this.add.text(GAME_WIDTH - 26, 25, t('footer.keys'), {
+      fontFamily: FONT, fontSize: '11.5px', color: '#fff5e6',
+    }).setOrigin(1, 0.5).setDepth(6);
+    const keysW = Math.ceil(keysTxt.width) + 24;
+    pillG.fillStyle(0x21161a, 0.62);
+    pillG.fillRoundedRect(GAME_WIDTH - 14 - keysW, 12, keysW, 26, 13);
   }
 
+  // -------------------------------------------------------------------------
+  // 4. 菜单数据构建与渲染
   // -------------------------------------------------------------------------
   buildMenu() {
     this.clearMenu();
@@ -155,13 +228,39 @@ export default class MenuScene extends Phaser.Scene {
 
     if (this.mode === 'main') {
       this.rows = [
-        { label: t('menu.start', { n: unlocked }), action: () => this.startLevel(unlocked) },
-        { label: t('menu.levels'), action: () => this.setMode('levels') },
-        { label: t('menu.help'), action: () => this.setMode('help') },
-        { label: t('menu.language'), action: () => this.switchLang() },
-        { label: t('menu.clear'), action: () => this.setMode('confirm') },
+        {
+          icon: '▶', badgeColor: 0x4ca858,
+          label: t('menu.start', { n: unlocked }),
+          hint: 'ENTER',
+          action: () => this.startLevel(unlocked),
+        },
+        {
+          icon: '★', badgeColor: 0xe68a2e,
+          label: t('menu.levels'),
+          hint: `${unlocked}/3`,
+          action: () => this.setMode('levels'),
+        },
+        {
+          icon: '?', badgeColor: 0x4e8cc8,
+          label: t('menu.help'),
+          hint: 'INFO',
+          action: () => this.setMode('help'),
+        },
+        {
+          icon: '文', badgeColor: 0x8862b8,
+          label: t('menu.language'),
+          hint: 'L',
+          action: () => this.switchLang(),
+        },
+        {
+          icon: '↺', badgeColor: 0xc45858,
+          label: t('menu.clear'),
+          hint: '',
+          action: () => this.setMode('confirm'),
+        },
       ];
     } else if (this.mode === 'levels') {
+      const stageColors = { 1: 0x4ca858, 2: 0xe68a2e, 3: 0xc8463c };
       this.rows = LEVELS.map((lv) => {
         const rec = Save.level(lv.id);
         const locked = lv.id > unlocked;
@@ -171,20 +270,41 @@ export default class MenuScene extends Phaser.Scene {
               ? t('menu.best', { time: formatTime(rec.bestTimeMs), n: rec.fewestDeaths })
               : t('menu.notCleared'));
         return {
-          label: t(lv.nameKey), detail, locked,
+          icon: locked ? '🔒' : `S${lv.id}`,
+          badgeColor: locked ? 0x9c908c : stageColors[lv.id],
+          label: t(lv.nameKey),
+          detail,
+          locked,
+          hint: locked ? '' : 'GO →',
           action: () => !locked && this.startLevel(lv.id),
         };
       });
-      this.rows.push({ label: t('menu.back'), action: () => this.setMode('main') });
+      this.rows.push({
+        icon: '←', badgeColor: 0x7a6a66,
+        label: t('menu.back'),
+        hint: 'ESC',
+        action: () => this.setMode('main'),
+      });
     } else if (this.mode === 'confirm') {
       this.rows = [
-        { label: t('menu.confirmClear'), danger: true, action: () => {
-          Save.reset();
-          audio.play('trap');
-          this.setMode('main');
-          this.buildFooterRefresh();
-        } },
-        { label: t('menu.cancel'), action: () => this.setMode('main') },
+        {
+          icon: '!', badgeColor: 0xc84242,
+          label: t('menu.confirmClear'),
+          danger: true,
+          hint: 'ENTER',
+          action: () => {
+            Save.reset();
+            audio.play('trap');
+            this.setMode('main');
+            this.buildFooterRefresh();
+          },
+        },
+        {
+          icon: '←', badgeColor: 0x7a6a66,
+          label: t('menu.cancel'),
+          hint: 'ESC',
+          action: () => this.setMode('main'),
+        },
       ];
     }
 
@@ -195,12 +315,10 @@ export default class MenuScene extends Phaser.Scene {
   switchLang() {
     audio.play('select');
     toggleLang();
-    // 整个场景重启一次，让标题/页脚/菜单全部按新语言重建
     this.scene.restart();
   }
 
   buildFooterRefresh() {
-    // 简单起见：重开本场景即可刷新底部的累计统计
     this.scene.restart();
   }
 
@@ -214,51 +332,94 @@ export default class MenuScene extends Phaser.Scene {
     this.rows.forEach((row, i) => {
       const x = GAME_WIDTH / 2 - w / 2;
       const y = startY + i * pitch;
-
       const selected = i === this.index;
+
       const g = drawCard(this, x, y, w, h, {
         radius: 15,
-        fill: row.danger ? 0xfff0f0 : (selected ? 0xfff4e2 : 0xfffdfa),
-        // 不透明度别太低：背后是山和树，太透会让按钮上的字很难读
+        selected,
+        danger: row.danger,
+        fill: row.danger ? 0xfff0f0 : (selected ? 0xfff5e0 : 0xfffdfa),
         alpha: selected ? 0.99 : 0.95,
-        line: selected ? 0xffc842 : COLORS.line,
+        line: selected ? 0xf2a62c : COLORS.line,
       });
       g.setDepth(10);
 
-      const label = this.add.text(x + 26, y + (row.detail ? 8 : h / 2), row.label, {
-        fontFamily: FONT, fontSize: '18px',
-        color: row.locked ? '#b9aca6' : (row.danger ? '#b63c3c' : '#3e2e32'),
+      // 左侧彩色圆角图标徽章
+      const badgeG = this.add.graphics().setDepth(11);
+      badgeG.fillStyle(row.badgeColor || 0xe68a2e, row.locked ? 0.55 : 1);
+      badgeG.fillRoundedRect(x + 12, y + 9, 32, 32, 9);
+      badgeG.fillStyle(0xffffff, 0.22);
+      badgeG.fillRoundedRect(x + 14, y + 11, 28, 12, 5);
+
+      const iconTxt = this.add.text(x + 28, y + 25, row.icon || '•', {
+        fontFamily: FONT, fontSize: '14px', color: '#fffdfa', fontStyle: 'bold',
+      }).setOrigin(0.5).setDepth(12);
+
+      // 主文案
+      const label = this.add.text(x + 56, y + (row.detail ? 8 : h / 2), row.label, {
+        fontFamily: FONT, fontSize: '17.5px',
+        color: row.locked ? '#b0a29c' : (row.danger ? '#bf3b3b' : '#36262a'),
         fontStyle: selected ? 'bold' : 'normal',
       }).setDepth(11);
       if (row.detail) label.setOrigin(0, 0);
       else label.setOrigin(0, 0.5);
 
       if (row.detail) {
-        this.add.text(x + 26, y + 31, row.detail, {
-          fontFamily: FONT, fontSize: '11.5px', color: '#8b7c78',
+        const det = this.add.text(x + 56, y + 30, row.detail, {
+          fontFamily: FONT, fontSize: '11.5px', color: '#82706c',
         }).setDepth(11);
+        this.menuObjects.push(det);
       }
 
+      // 右侧快捷键胶囊提示
+      if (row.hint) {
+        const hintTxt = this.add.text(x + w - 18, y + h / 2, row.hint, {
+          fontFamily: 'Helvetica Neue, Arial, sans-serif',
+          fontSize: '11.5px',
+          color: selected ? '#d47c1c' : '#a89892',
+          fontStyle: 'bold',
+        }).setOrigin(1, 0.5).setDepth(11);
+        this.menuObjects.push(hintTxt);
+      }
+
+      // 鼠标交互热区（悬停高亮 + 点击执行）
+      const hitZone = this.add.zone(x + w / 2, y + h / 2, w, h)
+        .setDepth(15)
+        .setInteractive({ useHandCursor: !row.locked });
+      hitZone.on('pointerover', () => {
+        if (this.index !== i) {
+          this.index = i;
+          audio.play('select');
+          this.clearMenu();
+          this.renderRows();
+        }
+      });
+      hitZone.on('pointerdown', () => {
+        this.index = i;
+        this.confirm();
+      });
+
       if (selected) {
-        const arrow = this.add.text(x - 26, y + h / 2, '🐾', {
+        const arrow = this.add.text(x - 24, y + h / 2, '🐾', {
           fontFamily: FONT, fontSize: '18px',
-        }).setOrigin(0.5).setDepth(11);
+        }).setOrigin(0.5).setDepth(12);
         this.tweens.add({
-          targets: arrow, x: x - 18, duration: 520, yoyo: true, repeat: -1,
+          targets: arrow, x: x - 16, duration: 500, yoyo: true, repeat: -1,
           ease: 'Sine.easeInOut',
         });
         this.menuObjects.push(arrow);
       }
-      this.menuObjects.push(g, label);
+
+      this.menuObjects.push(g, badgeG, iconTxt, label, hitZone);
     });
   }
 
   renderHelp() {
-    const w = 740;
-    const h = 390;
+    const w = 760;
+    const h = 398;
     const x = GAME_WIDTH / 2 - w / 2;
-    const y = 112;
-    const g = drawCard(this, x, y, w, h, { radius: 20, alpha: 0.97 });
+    const y = 98;
+    const g = drawCard(this, x, y, w, h, { radius: 22, alpha: 0.98, selected: true });
     g.setDepth(10);
     this.menuObjects.push(g);
 
@@ -280,28 +441,39 @@ export default class MenuScene extends Phaser.Scene {
       [t('help.gag2'), t('help.gag2Note')],
     ];
 
-    let ty = y + 24;
+    let ty = y + 22;
     let lastHead = false;
     for (const [a, b] of lines) {
-      if (!a && !b) { ty += 10; continue; }
+      if (!a && !b) { ty += 8; continue; }
       const isHead = heads.includes(a) && !b && !lastHead;
       lastHead = isHead;
-      this.menuObjects.push(this.add.text(x + 30, ty, a, {
-        fontFamily: FONT, fontSize: isHead ? '16px' : '14px',
-        color: isHead ? '#d88034' : '#3e2e32',
+
+      if (isHead) {
+        const hg = this.add.graphics().setDepth(10.5);
+        hg.fillStyle(0xfff0d4, 1);
+        hg.fillRoundedRect(x + 24, ty - 2, w - 48, 24, 7);
+        this.menuObjects.push(hg);
+      }
+
+      this.menuObjects.push(this.add.text(x + 34, ty, a, {
+        fontFamily: FONT, fontSize: isHead ? '15px' : '13.5px',
+        color: isHead ? '#d2721e' : '#36262a',
         fontStyle: isHead ? 'bold' : 'normal',
       }).setDepth(11));
+
       if (b) {
-        this.menuObjects.push(this.add.text(x + 392, ty, b, {
-          fontFamily: FONT, fontSize: '13px', color: '#8b7c78',
+        this.menuObjects.push(this.add.text(x + 398, ty, b, {
+          fontFamily: FONT, fontSize: '13px', color: '#7e6c68',
         }).setDepth(11));
       }
       ty += isHead ? 28 : 22;
     }
 
-    this.menuObjects.push(this.add.text(GAME_WIDTH / 2, y + h - 22, t('help.back'), {
-      fontFamily: FONT, fontSize: '13px', color: '#8b7c78',
-    }).setOrigin(0.5).setDepth(11));
+    const backBtn = this.add.text(GAME_WIDTH / 2, y + h - 22, t('help.back'), {
+      fontFamily: FONT, fontSize: '13.5px', color: '#d2721e', fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(11).setInteractive({ useHandCursor: true });
+    backBtn.on('pointerdown', () => this.back());
+    this.menuObjects.push(backBtn);
   }
 
   clearMenu() {
@@ -316,6 +488,8 @@ export default class MenuScene extends Phaser.Scene {
     this.buildMenu();
   }
 
+  // -------------------------------------------------------------------------
+  // 5. 键盘控制
   // -------------------------------------------------------------------------
   bindKeys() {
     const kb = this.input.keyboard;
@@ -366,7 +540,7 @@ export default class MenuScene extends Phaser.Scene {
 
   startLevel(id) {
     audio.play('goal');
-    this.cameras.main.fadeOut(260, 43, 32, 36);
+    this.cameras.main.fadeOut(260, 36, 26, 30);
     this.cameras.main.once('camerafadeoutcomplete', () => {
       this.scene.start('Level', { levelId: id });
     });

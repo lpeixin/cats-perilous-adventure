@@ -7,14 +7,15 @@
 <meta name="description" content="An original trap-troll platformer that looks perfectly harmless. 一款原创的陷阱式恶搞平台跳跃游戏。">
 <link rel="icon" href="assets/ui/appicon.png">
 <style>
-  :root { --bg: #2b2024; --ink: #ffecd6; --muted: #8b7c78; }
+  :root { --bg: #23191d; --ink: #ffecd6; --muted: #8b7c78; }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; height: 100%;
-    background: var(--bg);
+    background: radial-gradient(circle at 50% 38%, #3c2932 0%, #23191d 65%, #160f12 100%);
     overflow: hidden;
     font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
+    user-select: none;
   }
   #game-root {
     position: fixed; inset: 0;
@@ -22,8 +23,12 @@
   }
   #game-root canvas {
     display: block;
-    border-radius: 14px;
-    box-shadow: 0 24px 70px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.06);
+    border-radius: 16px;
+    box-shadow:
+      0 28px 80px rgba(0, 0, 0, .68),
+      0 6px 20px rgba(0, 0, 0, .42),
+      0 0 0 2px rgba(255, 226, 178, .14),
+      0 0 0 6px rgba(20, 12, 16, .65);
   }
   /* 竖屏/窄屏时的友好提示 */
   #rotate-tip {

@@ -1,5 +1,5 @@
 /**
- * GameOverScene —— 挑战中断结算
+ * GameOverScene —— 挑战中断结算（工作室级界面版）
  * ---------------------------------------------------------------
  * 本作是"无限重试"设计：正常死亡不会进入这里，而是立刻重开当前关卡。
  * 只有玩家从暂停菜单里主动「放弃本关」时才会走到这个场景 ——
@@ -25,53 +25,75 @@ export default class GameOverScene extends Phaser.Scene {
   create() {
     const cfg = LEVELS.find((l) => l.id === this.info.levelId) || LEVELS[0];
 
-    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'bg_sky')
-      .setDisplaySize(GAME_WIDTH, GAME_HEIGHT).setAlpha(0.5);
-    this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x2b2024, 0.72).setOrigin(0, 0);
+    const skyKey = this.textures.exists('bg_sky_2') ? 'bg_sky_2' : 'bg_sky';
+    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, skyKey)
+      .setDisplaySize(GAME_WIDTH, GAME_HEIGHT).setAlpha(0.55);
+    this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x1e1418, 0.72).setOrigin(0, 0);
 
-    const w = 560;
-    const h = 300;
+    const w = 580;
+    const h = 310;
     const x = GAME_WIDTH / 2 - w / 2;
-    const y = GAME_HEIGHT / 2 - h / 2 - 10;
-    drawCard(this, x, y, w, h, { radius: 22, alpha: 0.97 });
+    const y = GAME_HEIGHT / 2 - h / 2 - 8;
+    drawCard(this, x, y, w, h, { radius: 22, alpha: 0.98, selected: true });
 
-    // 一只哭丧着脸的猫
-    const cat = this.add.sprite(GAME_WIDTH / 2, y - 26, 'cat_small', 9).setScale(1.7);
+    // 内嵌装饰面板
+    const innerG = this.add.graphics();
+    innerG.fillStyle(0xf8eee4, 1);
+    innerG.fillRoundedRect(x + 28, y + 108, w - 56, 98, 14);
+    innerG.lineStyle(1.5, 0xe4d0be, 1);
+    innerG.strokeRoundedRect(x + 28, y + 108, w - 56, 98, 14);
+
+    // 委屈巴巴的小猫徽章
+    innerG.fillStyle(0xffe4bc, 1);
+    innerG.fillCircle(GAME_WIDTH / 2, y - 16, 36);
+    innerG.lineStyle(3, 0xe6a040, 1);
+    innerG.strokeCircle(GAME_WIDTH / 2, y - 16, 36);
+
+    const cat = this.add.sprite(GAME_WIDTH / 2, y - 16, 'cat_small', 9).setScale(1.45);
     this.tweens.add({
       targets: cat, angle: { from: -8, to: 8 },
       duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     });
 
-    this.add.text(GAME_WIDTH / 2, y + 44, t('over.title'), {
-      fontFamily: FONT, fontSize: '34px', color: '#3e2e32', fontStyle: 'bold',
+    this.add.text(GAME_WIDTH / 2, y + 48, t('over.title'), {
+      fontFamily: FONT, fontSize: '32px', color: '#36262a', fontStyle: 'bold',
     }).setOrigin(0.5);
 
     this.add.text(GAME_WIDTH / 2, y + 84, t(cfg.nameKey), {
-      fontFamily: FONT, fontSize: '14px', color: '#8b7c78',
+      fontFamily: FONT, fontSize: '14px', color: '#82706c', fontStyle: 'bold',
     }).setOrigin(0.5);
 
     const taunt = deathTaunt(this.info.deaths || 0);
-    this.add.text(GAME_WIDTH / 2, y + 124,
+    this.add.text(GAME_WIDTH / 2, y + 134,
       t('over.summary', { n: this.info.deaths || 0, time: formatTime(this.info.elapsed || 0) }), {
-        fontFamily: FONT, fontSize: '15px', color: '#3e2e32',
+        fontFamily: FONT, fontSize: '15.5px', color: '#36262a', fontStyle: 'bold',
       }).setOrigin(0.5);
 
-    this.add.text(GAME_WIDTH / 2, y + 154, t(taunt.key, taunt.params), {
-      fontFamily: FONT, fontSize: '14px', color: '#b63c3c',
-      wordWrap: { width: w - 70 }, align: 'center',
+    this.add.text(GAME_WIDTH / 2, y + 170, t(taunt.key, taunt.params), {
+      fontFamily: FONT, fontSize: '14px', color: '#bf3b3b', fontStyle: 'bold',
+      wordWrap: { width: w - 80 }, align: 'center',
     }).setOrigin(0.5);
 
-    this.add.text(GAME_WIDTH / 2, y + 200, t('over.persist'), {
-        fontFamily: FONT, fontSize: '12.5px', color: '#8b7c78',
-      }).setOrigin(0.5);
+    this.add.text(GAME_WIDTH / 2, y + 236, t('over.persist'), {
+      fontFamily: FONT, fontSize: '12.5px', color: '#82706c',
+    }).setOrigin(0.5);
 
-    const hint = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 62,
+    // 底部提示胶囊（支持点击重试）
+    const cx = GAME_WIDTH / 2;
+    const footG = this.add.graphics();
+    footG.fillStyle(0x21161a, 0.85);
+    footG.fillRoundedRect(cx - 240, GAME_HEIGHT - 64, 480, 36, 18);
+    footG.lineStyle(1.5, 0xffd26a, 0.65);
+    footG.strokeRoundedRect(cx - 240, GAME_HEIGHT - 64, 480, 36, 18);
+
+    const hint = this.add.text(cx, GAME_HEIGHT - 46,
       t('over.hint'), {
-        fontFamily: FONT, fontSize: '15px', color: '#fffdfa', fontStyle: 'bold',
-        stroke: '#3e2e32', strokeThickness: 4,
-      }).setOrigin(0.5);
+        fontFamily: FONT, fontSize: '14.5px', color: '#fffdfa', fontStyle: 'bold',
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    hint.on('pointerdown', () => this.retry());
+
     this.tweens.add({
-      targets: hint, alpha: { from: 1, to: 0.5 },
+      targets: hint, alpha: { from: 1, to: 0.6 },
       duration: 900, yoyo: true, repeat: -1,
     });
 

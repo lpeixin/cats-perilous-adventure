@@ -1,7 +1,7 @@
 /**
- * PauseScene —— 暂停覆盖层
+ * PauseScene —— 工作室级暂停菜单弹窗
  * ---------------------------------------------------------------
- * 以覆盖层方式启动（LevelScene 被 pause），所以死亡重试循环不会被打断。
+ * 以覆盖层方式启动（LevelScene 被 pause），支持键盘与鼠标悬停点击。
  */
 import { GAME_WIDTH, GAME_HEIGHT, COLORS } from '../utils/constants.js';
 import { audio } from '../utils/audio.js';
@@ -19,53 +19,40 @@ export default class PauseScene extends Phaser.Scene {
   init(data) {
     this.info = data || {};
     this.index = 0;
+    this.rowObjs = [];
   }
 
   create() {
-    this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x2b2024, 0.55)
+    this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x1e1418, 0.62)
       .setOrigin(0, 0);
 
-    const w = 460;
-    const h = 320;
+    const w = 480;
+    const h = 342;
     const x = GAME_WIDTH / 2 - w / 2;
     const y = GAME_HEIGHT / 2 - h / 2;
-    drawCard(this, x, y, w, h, { radius: 20, alpha: 0.98 });
+    drawCard(this, x, y, w, h, { radius: 22, alpha: 0.98, selected: true });
 
-    this.add.text(GAME_WIDTH / 2, y + 34, t('pause.title'), {
-      fontFamily: FONT, fontSize: '30px', color: '#3e2e32', fontStyle: 'bold',
+    // 顶部标题与数据胶囊底衬
+    const topG = this.add.graphics();
+    topG.fillStyle(0xf6ede2, 1);
+    topG.fillRoundedRect(x + 40, y + 66, w - 80, 34, 17);
+
+    this.add.text(GAME_WIDTH / 2, y + 36, t('pause.title'), {
+      fontFamily: FONT, fontSize: '30px', color: '#36262a', fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    this.add.text(GAME_WIDTH / 2, y + 74,
+    this.add.text(GAME_WIDTH / 2, y + 83,
       t('pause.stats', { n: this.info.deaths ?? 0, time: formatTime(this.info.elapsed ?? 0) }), {
-        fontFamily: FONT, fontSize: '13px', color: '#8b7c78',
+        fontFamily: FONT, fontSize: '13.5px', color: '#6e5c58', fontStyle: 'bold',
       }).setOrigin(0.5);
 
     this.rows = [
-      { label: t('pause.resume'), action: () => this.resume() },
-      { label: t('pause.restart'), action: () => this.restart() },
-      { label: t('pause.abandon'), danger: true, action: () => this.abandon() },
+      { icon: '▶', badgeColor: 0x4ca858, label: t('pause.resume'), hint: 'P / ESC', action: () => this.resume() },
+      { icon: '↺', badgeColor: 0xe68a2e, label: t('pause.restart'), hint: 'R', action: () => this.restart() },
+      { icon: '✕', badgeColor: 0xc8463c, label: t('pause.abandon'), danger: true, hint: '', action: () => this.abandon() },
     ];
 
-    this.rows.forEach((row, i) => {
-      const rw = 360;
-      const rh = 48;
-      const rx = GAME_WIDTH / 2 - rw / 2;
-      const ry = y + 108 + i * 58;
-      const selected = i === this.index;
-      drawCard(this, rx, ry, rw, rh, {
-        radius: 14,
-        fill: row.danger ? 0xfff0f0 : (selected ? 0xfff4e2 : 0xfffdfa),
-        line: selected ? 0xffc842 : COLORS.line,
-      });
-      this.add.text(GAME_WIDTH / 2, ry + rh / 2, row.label, {
-        fontFamily: FONT, fontSize: '17px',
-        color: row.danger ? '#b63c3c' : '#3e2e32',
-        fontStyle: selected ? 'bold' : 'normal',
-      }).setOrigin(0.5);
-      row.rect = { x: rx, y: ry, w: rw, h: rh };
-    });
-
-    this.highlight();
+    this.renderRows(y);
 
     const kb = this.input.keyboard;
     kb.on('keydown-UP', () => this.move(-1));
@@ -78,19 +65,71 @@ export default class PauseScene extends Phaser.Scene {
     kb.on('keydown-ESC', () => this.resume());
   }
 
-  highlight() {
-    // 用一层描边表示当前选中项
-    if (this.cursor) this.cursor.destroy();
-    const r = this.rows[this.index].rect;
-    this.cursor = this.add.graphics();
-    this.cursor.lineStyle(3, 0xffc842, 1);
-    this.cursor.strokeRoundedRect(r.x - 3, r.y - 3, r.w + 6, r.h + 6, 16);
+  renderRows(baseY) {
+    this.rowObjs.forEach((o) => o.destroy && o.destroy());
+    this.rowObjs = [];
+
+    const y0 = baseY ?? (GAME_HEIGHT / 2 - 342 / 2);
+    this.rows.forEach((row, i) => {
+      const rw = 380;
+      const rh = 50;
+      const rx = GAME_WIDTH / 2 - rw / 2;
+      const ry = y0 + 120 + i * 62;
+      const selected = i === this.index;
+
+      const card = drawCard(this, rx, ry, rw, rh, {
+        radius: 15,
+        selected,
+        danger: row.danger,
+        fill: row.danger ? 0xfff0f0 : (selected ? 0xfff5e0 : 0xfffdfa),
+        line: selected ? 0xf2a62c : COLORS.line,
+      });
+
+      const badge = this.add.graphics();
+      badge.fillStyle(row.badgeColor, 1);
+      badge.fillRoundedRect(rx + 12, ry + 9, 32, 32, 9);
+      const icon = this.add.text(rx + 28, ry + 25, row.icon, {
+        fontFamily: FONT, fontSize: '14px', color: '#fffdfa', fontStyle: 'bold',
+      }).setOrigin(0.5);
+
+      const txt = this.add.text(rx + 58, ry + rh / 2, row.label, {
+        fontFamily: FONT, fontSize: '17px',
+        color: row.danger ? '#bf3b3b' : '#36262a',
+        fontStyle: selected ? 'bold' : 'normal',
+      }).setOrigin(0, 0.5);
+
+      if (row.hint) {
+        const hint = this.add.text(rx + rw - 16, ry + rh / 2, row.hint, {
+          fontFamily: 'Helvetica Neue, Arial, sans-serif',
+          fontSize: '11.5px',
+          color: selected ? '#d47c1c' : '#a89892',
+          fontStyle: 'bold',
+        }).setOrigin(1, 0.5);
+        this.rowObjs.push(hint);
+      }
+
+      const zone = this.add.zone(rx + rw / 2, ry + rh / 2, rw, rh)
+        .setInteractive({ useHandCursor: true });
+      zone.on('pointerover', () => {
+        if (this.index !== i) {
+          this.index = i;
+          audio.play('select');
+          this.renderRows(y0);
+        }
+      });
+      zone.on('pointerdown', () => {
+        this.index = i;
+        this.confirm();
+      });
+
+      this.rowObjs.push(card, badge, icon, txt, zone);
+    });
   }
 
   move(d) {
     this.index = (this.index + d + this.rows.length) % this.rows.length;
     audio.play('select');
-    this.highlight();
+    this.renderRows();
   }
 
   confirm() {
@@ -119,7 +158,6 @@ export default class PauseScene extends Phaser.Scene {
 
   abandon() {
     audio.play('select');
-    const level = this.scene.get('Level');
     const info = {
       levelId: this.info.levelId,
       deaths: this.info.deaths ?? 0,

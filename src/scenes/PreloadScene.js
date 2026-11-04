@@ -1,15 +1,14 @@
 /**
- * PreloadScene —— 资源加载
+ * PreloadScene —— 资源加载与工作室纹理初始化
  * ---------------------------------------------------------------
  * 所有资源都来自**本地 assets/ 目录**（Phaser 本体也已复制到 vendor/），
  * 因此加载完成之后整个游戏可以完全离线运行，不请求任何外部域名。
  *
- * 这里还会用 Canvas 现场生成两张"氛围纹理"：
- *   · vignette  —— 四周轻轻压暗的暗角，给画面加纵深（全场景共用）
- *   · skyGrad   —— 天空自上而下的渐变，让平涂的蓝天有空气感
+ * 加载完成后还会调用 buildStudioTextures 生成关卡天空、体积光、生态装饰道具与粒子纹理。
  */
-import { COLORS, GAME_WIDTH, GAME_HEIGHT, LEVELS, TILE } from '../utils/constants.js';
+import { GAME_WIDTH, GAME_HEIGHT, LEVELS } from '../utils/constants.js';
 import { registerAnimations } from '../utils/animations.js';
+import { buildStudioTextures } from '../utils/studioArt.js';
 import { t } from '../utils/i18n.js';
 
 /** 需要按精灵表切分的图（key, 路径, 单帧宽, 单帧高） */
@@ -92,79 +91,76 @@ export default class PreloadScene extends Phaser.Scene {
     this.scene.start('Menu');
   }
 
-  // -------------------------------------------------------------------------
-  // 运行时生成的氛围纹理（两个场景共用，只在加载页画一次）
-  // -------------------------------------------------------------------------
   buildAmbientTextures() {
-    // 暗角：径向渐变，四周压暗、中心全透明
-    if (!this.textures.exists('vignette')) {
-      const cv = this.textures.createCanvas('vignette', GAME_WIDTH, GAME_HEIGHT);
-      const ctx = cv.getContext();
-      const g = ctx.createRadialGradient(
-        GAME_WIDTH / 2, GAME_HEIGHT / 2, Math.min(GAME_WIDTH, GAME_HEIGHT) * 0.44,
-        GAME_WIDTH / 2, GAME_HEIGHT / 2, Math.max(GAME_WIDTH, GAME_HEIGHT) * 0.72,
-      );
-      g.addColorStop(0, 'rgba(30,20,24,0)');
-      g.addColorStop(1, 'rgba(30,20,24,0.30)');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-      cv.refresh();
-    }
-
-    // 天空渐变：顶部一层淡淡的深蓝，往下 45% 处完全透明
-    if (!this.textures.exists('skyGrad')) {
-      const cv = this.textures.createCanvas('skyGrad', GAME_WIDTH, GAME_HEIGHT);
-      const ctx = cv.getContext();
-      const g = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT * 0.45);
-      g.addColorStop(0, 'rgba(38,66,120,0.20)');
-      g.addColorStop(1, 'rgba(38,66,120,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT * 0.45);
-      cv.refresh();
-    }
+    buildStudioTextures(this);
   }
 
   buildLoadingUI() {
     const cx = GAME_WIDTH / 2;
     const cy = GAME_HEIGHT / 2;
 
-    this.cameras.main.setBackgroundColor(0x2b2024);
-    this.add.image(cx, cy, 'bg_sky').setDisplaySize(GAME_WIDTH, GAME_HEIGHT).setAlpha(0.18);
+    this.cameras.main.setBackgroundColor(0x241a20);
 
-    this.add.text(cx, cy - 96, t('loading.title'), {
-      fontFamily: FONT, fontSize: '44px', color: '#ffecd6', fontStyle: 'bold',
+    // 柔和背景装饰与徽章
+    const bgG = this.add.graphics();
+    bgG.fillGradientStyle(0x33242c, 0x33242c, 0x1e151a, 0x1e151a, 1);
+    bgG.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+    // 圆形猫耳徽章光晕
+    bgG.fillStyle(0xffc842, 0.08);
+    bgG.fillCircle(cx, cy - 115, 72);
+    bgG.fillStyle(0xf4943e, 1);
+    bgG.fillTriangle(cx - 22, cy - 126, cx - 14, cy - 148, cx - 4, cy - 128);
+    bgG.fillTriangle(cx + 4, cy - 128, cx + 14, cy - 148, cx + 22, cy - 126);
+    bgG.fillCircle(cx, cy - 112, 22);
+    bgG.fillStyle(0x2d2024, 1);
+    bgG.fillCircle(cx - 8, cy - 114, 3.2);
+    bgG.fillCircle(cx + 8, cy - 114, 3.2);
+
+    this.add.text(cx, cy - 58, t('loading.title'), {
+      fontFamily: FONT, fontSize: '42px', color: '#ffefdb', fontStyle: 'bold',
+      stroke: '#1b1216', strokeThickness: 6,
     }).setOrigin(0.5);
 
-    this.add.text(cx, cy - 52, t('loading.sub'), {
+    this.add.text(cx, cy - 16, t('loading.sub'), {
       fontFamily: 'Helvetica Neue, Arial, sans-serif',
-      fontSize: '16px', color: '#c4b2aa', letterSpacing: 3,
+      fontSize: '14px', color: '#d4b89e', letterSpacing: 4, fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    const barW = 420;
+    const barW = 440;
     const barH = 22;
-    const g = this.add.graphics();
-    g.fillStyle(0x000000, 0.28);
-    g.fillRoundedRect(cx - barW / 2 - 4, cy + 18, barW + 8, barH + 8, 15);
-    g.fillStyle(0xfffdfa, 0.18);
-    g.fillRoundedRect(cx - barW / 2, cy + 22, barW, barH, 11);
-    this.barG = g;
-    this.barGeom = { x: cx - barW / 2, y: cy + 22, w: barW, h: barH };
+    const trackG = this.add.graphics();
+    trackG.fillStyle(0x130d10, 0.65);
+    trackG.fillRoundedRect(cx - barW / 2 - 5, cy + 23, barW + 10, barH + 10, 16);
+    trackG.lineStyle(2, 0x624952, 0.7);
+    trackG.strokeRoundedRect(cx - barW / 2 - 5, cy + 23, barW + 10, barH + 10, 16);
+    trackG.fillStyle(0x3a2b32, 0.9);
+    trackG.fillRoundedRect(cx - barW / 2, cy + 28, barW, barH, 11);
 
-    this.pctText = this.add.text(cx, cy + 76, t('loading.progress', { p: 0 }), {
-      fontFamily: FONT, fontSize: '14px', color: '#c4b2aa',
+    this.barG = this.add.graphics();
+    this.barGeom = { x: cx - barW / 2, y: cy + 28, w: barW, h: barH };
+
+    this.pctText = this.add.text(cx, cy + 78, t('loading.progress', { p: 0 }), {
+      fontFamily: FONT, fontSize: '14px', color: '#e2cfc4', fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    this.tipText = this.add.text(cx, GAME_HEIGHT - 54, t('loading.tip'), {
-      fontFamily: FONT, fontSize: '13px', color: '#8b7c78',
+    this.tipText = this.add.text(cx, GAME_HEIGHT - 52, t('loading.tip'), {
+      fontFamily: FONT, fontSize: '13px', color: '#9c8a84',
       wordWrap: { width: GAME_WIDTH - 200 },
     }).setOrigin(0.5);
   }
 
   setProgress(p) {
     const { x, y, w, h } = this.barGeom;
-    this.barG.fillStyle(0xffc842, 1);
-    const filled = Math.max(6, w * p);
+    this.barG.clear();
+    const filled = Math.max(12, w * p);
+    this.barG.fillStyle(0xf09236, 1);
     this.barG.fillRoundedRect(x, y, filled, h, 11);
+    this.barG.fillStyle(0xffcf4a, 1);
+    this.barG.fillRoundedRect(x, y, filled, h - 4, 10);
+    this.barG.fillStyle(0xfff4be, 0.55);
+    this.barG.fillRoundedRect(x + 4, y + 3, Math.max(4, filled - 8), 6, 4);
+
     if (this.pctText) {
       const str = t('loading.progress', { p: Math.round(p * 100) });
       if (str !== this._lastPct) {
