@@ -151,6 +151,7 @@ export default class LevelScene extends Phaser.Scene {
 
     this.bgFar = this.add.tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, 'bg_far')
       .setOrigin(0, 0).setDisplaySize(GAME_WIDTH, GAME_HEIGHT)
+      .setTileScale(0.5, 0.5)
       .setScrollFactor(0).setDepth(DEPTH.bg + 2).setAlpha(0.96)
       .setTint(th.farTint);
 
@@ -163,6 +164,7 @@ export default class LevelScene extends Phaser.Scene {
 
     this.bgMid = this.add.tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, 'bg_mid')
       .setOrigin(0, 0).setDisplaySize(GAME_WIDTH, GAME_HEIGHT)
+      .setTileScale(0.5, 0.5)
       .setScrollFactor(0).setDepth(DEPTH.bg + 3)
       .setTint(th.midTint);
 
@@ -334,11 +336,15 @@ export default class LevelScene extends Phaser.Scene {
     this.ambientMotes = [];
     const th = this.theme;
     const count = 22;
+    const hasPuff = this.textures.exists('fx_puff');
     for (let i = 0; i < count; i++) {
       const mx = Phaser.Math.Between(0, GAME_WIDTH);
       const my = Phaser.Math.Between(40, GAME_HEIGHT - 80);
       const r = Phaser.Math.FloatBetween(1.5, 3.2);
-      const mote = this.add.circle(mx, my, r, th.moteColor, Phaser.Math.FloatBetween(0.22, 0.55))
+      const alpha = Phaser.Math.FloatBetween(0.22, 0.55);
+      const mote = (hasPuff
+        ? this.add.image(mx, my, 'fx_puff').setScale(r / 10).setTint(th.moteColor).setAlpha(alpha)
+        : this.add.circle(mx, my, r, th.moteColor, alpha))
         .setScrollFactor(0)
         .setDepth(DEPTH.bg + 4);
       mote.vx = Phaser.Math.FloatBetween(-12, 18);
@@ -1003,8 +1009,8 @@ export default class LevelScene extends Phaser.Scene {
 
     // 水平 + 阻尼垂直视差
     const cam = this.cameras.main;
-    this.bgFar.tilePositionX = cam.scrollX * 0.16;
-    this.bgMid.tilePositionX = cam.scrollX * 0.42;
+    this.bgFar.tilePositionX = cam.scrollX * 0.32;
+    this.bgMid.tilePositionX = cam.scrollX * 0.84;
 
     // 空气悬浮微粒更新
     if (this.ambientMotes) {

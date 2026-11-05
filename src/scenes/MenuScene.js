@@ -7,7 +7,7 @@
 import { GAME_WIDTH, GAME_HEIGHT, COLORS, LEVELS, TILE } from '../utils/constants.js';
 import { audio } from '../utils/audio.js';
 import { Save, formatTime } from '../utils/save.js';
-import { drawCard } from '../ui/Hud.js';
+import { drawCard, drawBadge, drawPill } from '../ui/Hud.js';
 import { t, toggleLang } from '../utils/i18n.js';
 
 const FONT = 'PingFang SC, Helvetica Neue, Arial, sans-serif';
@@ -51,7 +51,7 @@ export default class MenuScene extends Phaser.Scene {
     this.add.image(GAME_WIDTH / 2, 0, 'skyGrad').setOrigin(0.5, 0);
 
     this.far = this.add.tileSprite(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 'bg_far')
-      .setDisplaySize(GAME_WIDTH, GAME_HEIGHT).setAlpha(0.95);
+      .setTileScale(0.5, 0.5).setDisplaySize(GAME_WIDTH, GAME_HEIGHT).setAlpha(0.95);
 
     if (this.textures.exists('sunbeams')) {
       this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'sunbeams')
@@ -59,7 +59,7 @@ export default class MenuScene extends Phaser.Scene {
     }
 
     this.mid = this.add.tileSprite(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 'bg_mid')
-      .setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
+      .setTileScale(0.5, 0.5).setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
 
     // 飘浮的云朵与暖阳
     this.clouds = [];
@@ -143,13 +143,11 @@ export default class MenuScene extends Phaser.Scene {
     });
 
     const cx = GAME_WIDTH / 2;
-    const bannerG = this.add.graphics().setDepth(3);
 
-    // 副标题胶囊底托
-    bannerG.fillStyle(0x2d1f24, 0.78);
-    bannerG.fillRoundedRect(cx - 210, 118, 420, 28, 14);
-    bannerG.lineStyle(1.5, 0xffd26a, 0.75);
-    bannerG.strokeRoundedRect(cx - 210, 118, 420, 28, 14);
+    // 副标题胶囊底托（3× 超清抗锯齿矢量绘制）
+    drawPill(this, cx - 210, 118, 420, 28, {
+      radius: 14, fill: 0x2d1f24, alpha: 0.80, line: 0xffd26a, lineAlpha: 0.78, lineWidth: 1.5,
+    }).setDepth(3);
 
     // 主标题（三层立体字：深色远影 → 暖金描边底 → 亮白主体，英文自动字号自适应）
     const title = t('game.title');
@@ -180,7 +178,6 @@ export default class MenuScene extends Phaser.Scene {
   // -------------------------------------------------------------------------
   buildFooter() {
     const data = Save.all();
-    const pillG = this.add.graphics().setDepth(5);
 
     // 左下：累计统计胶囊
     const statsTxt = this.add.text(28, GAME_HEIGHT - 25, t('footer.stats', {
@@ -189,10 +186,9 @@ export default class MenuScene extends Phaser.Scene {
       fontFamily: FONT, fontSize: '12.5px', color: '#fff8ee', fontStyle: 'bold',
     }).setOrigin(0, 0.5).setDepth(6);
     const statsW = Math.ceil(statsTxt.width) + 28;
-    pillG.fillStyle(0x21161a, 0.80);
-    pillG.fillRoundedRect(14, GAME_HEIGHT - 40, statsW, 30, 15);
-    pillG.lineStyle(1.5, 0xffe4b8, 0.35);
-    pillG.strokeRoundedRect(14, GAME_HEIGHT - 40, statsW, 30, 15);
+    drawPill(this, 14, GAME_HEIGHT - 40, statsW, 30, {
+      radius: 15, fill: 0x21161a, alpha: 0.82, line: 0xffe4b8, lineAlpha: 0.38, lineWidth: 1.5,
+    }).setDepth(5);
 
     // 右下：音效开关胶囊（支持点击切换）
     const muted = audio.muted;
@@ -203,18 +199,18 @@ export default class MenuScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
     this.muteText.on('pointerdown', () => this.toggleMute());
     const muteW = Math.max(146, Math.ceil(this.muteText.width) + 28);
-    pillG.fillStyle(0x21161a, 0.80);
-    pillG.fillRoundedRect(GAME_WIDTH - 14 - muteW, GAME_HEIGHT - 40, muteW, 30, 15);
-    pillG.lineStyle(1.5, 0xffe4b8, 0.35);
-    pillG.strokeRoundedRect(GAME_WIDTH - 14 - muteW, GAME_HEIGHT - 40, muteW, 30, 15);
+    drawPill(this, GAME_WIDTH - 14 - muteW, GAME_HEIGHT - 40, muteW, 30, {
+      radius: 15, fill: 0x21161a, alpha: 0.82, line: 0xffe4b8, lineAlpha: 0.38, lineWidth: 1.5,
+    }).setDepth(5);
 
     // 右上：按键提示胶囊
     const keysTxt = this.add.text(GAME_WIDTH - 26, 25, t('footer.keys'), {
       fontFamily: FONT, fontSize: '11.5px', color: '#fff5e6',
     }).setOrigin(1, 0.5).setDepth(6);
     const keysW = Math.ceil(keysTxt.width) + 24;
-    pillG.fillStyle(0x21161a, 0.62);
-    pillG.fillRoundedRect(GAME_WIDTH - 14 - keysW, 12, keysW, 26, 13);
+    drawPill(this, GAME_WIDTH - 14 - keysW, 12, keysW, 26, {
+      radius: 13, fill: 0x21161a, alpha: 0.65, line: 0xffe4b8, lineAlpha: 0.25, lineWidth: 1.2,
+    }).setDepth(5);
   }
 
   // -------------------------------------------------------------------------
@@ -344,12 +340,13 @@ export default class MenuScene extends Phaser.Scene {
       });
       g.setDepth(10);
 
-      // 左侧彩色圆角图标徽章
-      const badgeG = this.add.graphics().setDepth(11);
-      badgeG.fillStyle(row.badgeColor || 0xe68a2e, row.locked ? 0.55 : 1);
-      badgeG.fillRoundedRect(x + 12, y + 9, 32, 32, 9);
-      badgeG.fillStyle(0xffffff, 0.22);
-      badgeG.fillRoundedRect(x + 14, y + 11, 28, 12, 5);
+      // 左侧彩色圆角图标徽章（3× 超清矢量抗锯齿）
+      const badgeG = drawBadge(this, x + 12, y + 9, 32, 32, {
+        radius: 9,
+        fill: row.badgeColor || 0xe68a2e,
+        alpha: row.locked ? 0.55 : 1,
+        lipAlpha: 0.18,
+      }).setDepth(11);
 
       const iconTxt = this.add.text(x + 28, y + 25, row.icon || '•', {
         fontFamily: FONT, fontSize: '14px', color: '#fffdfa', fontStyle: 'bold',
@@ -449,9 +446,9 @@ export default class MenuScene extends Phaser.Scene {
       lastHead = isHead;
 
       if (isHead) {
-        const hg = this.add.graphics().setDepth(10.5);
-        hg.fillStyle(0xfff0d4, 1);
-        hg.fillRoundedRect(x + 24, ty - 2, w - 48, 24, 7);
+        const hg = drawPill(this, x + 24, ty - 2, w - 48, 24, {
+          radius: 7, fill: 0xfff0d4, alpha: 1,
+        }).setDepth(10.5);
         this.menuObjects.push(hg);
       }
 
@@ -549,8 +546,8 @@ export default class MenuScene extends Phaser.Scene {
   // -------------------------------------------------------------------------
   update(time, delta) {
     const dt = delta / 1000;
-    this.far.tilePositionX += 6 * dt;
-    this.mid.tilePositionX += 16 * dt;
+    this.far.tilePositionX += 12 * dt;
+    this.mid.tilePositionX += 32 * dt;
     for (const c of this.clouds) {
       c.x += c.speed * dt;
       if (c.x > GAME_WIDTH + 100) c.x = -100;

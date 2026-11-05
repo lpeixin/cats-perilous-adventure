@@ -16,6 +16,70 @@ import GameOverScene from './scenes/GameOverScene.js';
 // 决定界面语言（URL ?lang= → 存档 → 浏览器语言），必须在任何场景启动前完成
 initLang();
 
+// ============================================================================
+// 高清 Retina 渲染增强（WebGL 2× 物理帧缓冲 + 3× 超采样矢量字体）
+// 保持逻辑坐标 960×540 完全不变，物理画布升级为 1920×1080，彻底消除像素颗粒感与锯齿
+// ============================================================================
+const HD_SCALE = 2;
+const TEXT_HD_RES = 3;
+
+if (Phaser?.GameObjects?.GameObjectFactory?.prototype?.text) {
+  const origAddText = Phaser.GameObjects.GameObjectFactory.prototype.text;
+  Phaser.GameObjects.GameObjectFactory.prototype.text = function (x, y, text, style) {
+    const hdStyle = style && typeof style === 'object'
+      ? { resolution: TEXT_HD_RES, ...style }
+      : { resolution: TEXT_HD_RES };
+    return origAddText.call(this, x, y, text, hdStyle);
+  };
+}
+
+if (Phaser?.Renderer?.WebGL?.WebGLRenderer?.prototype) {
+  const proto = Phaser.Renderer.WebGL.WebGLRenderer.prototype;
+  const origResize = proto.resize;
+  proto.resize = function (width, height) {
+    const gl = this.gl;
+    if (gl && !gl.__hdPatched) {
+      gl.__hdPatched = true;
+      const self = this;
+      const origViewport = gl.viewport.bind(gl);
+      const origScissor = gl.scissor.bind(gl);
+      gl.viewport = function (x, y, w, h) {
+        if (!self.currentFramebuffer) {
+          return origViewport(x * HD_SCALE, y * HD_SCALE, w * HD_SCALE, h * HD_SCALE);
+        }
+        return origViewport(x, y, w, h);
+      };
+      gl.scissor = function (x, y, w, h) {
+        if (!self.currentFramebuffer) {
+          return origScissor(x * HD_SCALE, y * HD_SCALE, w * HD_SCALE, h * HD_SCALE);
+        }
+        return origScissor(x, y, w, h);
+      };
+      try {
+        Object.defineProperty(gl, 'drawingBufferWidth', {
+          configurable: true,
+          get: () => self.width || GAME_WIDTH,
+        });
+        Object.defineProperty(gl, 'drawingBufferHeight', {
+          configurable: true,
+          get: () => self.height || GAME_HEIGHT,
+        });
+      } catch (_) {}
+    }
+    if (this.canvas) {
+      const targetW = Math.round((width || GAME_WIDTH) * HD_SCALE);
+      const targetH = Math.round((height || GAME_HEIGHT) * HD_SCALE);
+      if (this.canvas.width !== targetW || this.canvas.height !== targetH) {
+        this.canvas.width = targetW;
+        this.canvas.height = targetH;
+      }
+    }
+    const res = origResize.call(this, width, height);
+    this.drawingBufferHeight = height;
+    return res;
+  };
+}
+
 const config = {
   type: Phaser.AUTO,
   parent: 'game-root',

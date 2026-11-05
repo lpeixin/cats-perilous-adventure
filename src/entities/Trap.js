@@ -372,10 +372,13 @@ export class GoalPole {
 
     if (!isFake) {
       // 真终点：给一层柔和的暖光提示
-      this.glow = scene.add.circle(this.worldX + 30, this.baseY - 176, 40, 0xffd76e, 0.16);
+      this.glow = scene.textures.exists('fx_puff')
+        ? scene.add.image(this.worldX + 30, this.baseY - 176, 'fx_puff')
+          .setScale(2.8).setTint(0xffd76e).setAlpha(0.24)
+        : scene.add.circle(this.worldX + 30, this.baseY - 176, 40, 0xffd76e, 0.16);
       this.glow.setDepth(7);
       scene.tweens.add({
-        targets: this.glow, scale: 1.3, alpha: 0.05,
+        targets: this.glow, scale: this.glow.scaleX * 1.3, alpha: 0.06,
         duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
       });
     }

@@ -6,7 +6,7 @@
 import { GAME_WIDTH, GAME_HEIGHT, COLORS } from '../utils/constants.js';
 import { audio } from '../utils/audio.js';
 import { formatTime } from '../utils/save.js';
-import { drawCard } from '../ui/Hud.js';
+import { drawCard, drawBadge, drawPill } from '../ui/Hud.js';
 import { t } from '../utils/i18n.js';
 
 const FONT = 'PingFang SC, Helvetica Neue, Arial, sans-serif';
@@ -33,9 +33,7 @@ export default class PauseScene extends Phaser.Scene {
     drawCard(this, x, y, w, h, { radius: 22, alpha: 0.98, selected: true });
 
     // 顶部标题与数据胶囊底衬
-    const topG = this.add.graphics();
-    topG.fillStyle(0xf6ede2, 1);
-    topG.fillRoundedRect(x + 40, y + 66, w - 80, 34, 17);
+    drawPill(this, x + 40, y + 66, w - 80, 34, { radius: 17, fill: 0xf6ede2, alpha: 1 });
 
     this.add.text(GAME_WIDTH / 2, y + 36, t('pause.title'), {
       fontFamily: FONT, fontSize: '30px', color: '#36262a', fontStyle: 'bold',
@@ -85,9 +83,9 @@ export default class PauseScene extends Phaser.Scene {
         line: selected ? 0xf2a62c : COLORS.line,
       });
 
-      const badge = this.add.graphics();
-      badge.fillStyle(row.badgeColor, 1);
-      badge.fillRoundedRect(rx + 12, ry + 9, 32, 32, 9);
+      const badge = drawBadge(this, rx + 12, ry + 9, 32, 32, {
+        radius: 9, fill: row.badgeColor, lipAlpha: 0.18,
+      });
       const icon = this.add.text(rx + 28, ry + 25, row.icon, {
         fontFamily: FONT, fontSize: '14px', color: '#fffdfa', fontStyle: 'bold',
       }).setOrigin(0.5);

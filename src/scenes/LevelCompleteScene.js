@@ -7,7 +7,7 @@
 import { GAME_WIDTH, GAME_HEIGHT, LEVELS } from '../utils/constants.js';
 import { audio } from '../utils/audio.js';
 import { formatTime, deathTaunt } from '../utils/save.js';
-import { drawCard } from '../ui/Hud.js';
+import { drawCard, drawPill } from '../ui/Hud.js';
 import { t } from '../utils/i18n.js';
 
 const FONT = 'PingFang SC, Helvetica Neue, Arial, sans-serif';
@@ -58,11 +58,9 @@ export default class LevelCompleteScene extends Phaser.Scene {
       stroke: '#3a2429', strokeThickness: 9,
     }).setOrigin(0.5);
 
-    const subBg = this.add.graphics();
-    subBg.fillStyle(0x2d1f24, 0.76);
-    subBg.fillRoundedRect(cx - 140, 82, 280, 26, 13);
-    subBg.lineStyle(1.5, 0xffd26a, 0.65);
-    subBg.strokeRoundedRect(cx - 140, 82, 280, 26, 13);
+    drawPill(this, cx - 140, 82, 280, 26, {
+      radius: 13, fill: 0x2d1f24, alpha: 0.78, line: 0xffd26a, lineAlpha: 0.68, lineWidth: 1.5,
+    });
 
     this.add.text(cx, 95, t(cfg.nameKey), {
       fontFamily: FONT, fontSize: '14px', color: '#ffe49c', fontStyle: 'bold',
@@ -78,11 +76,9 @@ export default class LevelCompleteScene extends Phaser.Scene {
     this.tweens.add({ targets: card, alpha: 1, duration: 280 });
 
     // 内部排版底衬（上方荣誉横幅 + 下方斑马纹数据行）
-    const innerG = this.add.graphics();
-    innerG.fillStyle(0xfff1e4, 1);
-    innerG.fillRoundedRect(x + 22, y + 18, w - 44, 112, 14);
-    innerG.lineStyle(1.5, 0xead4be, 1);
-    innerG.strokeRoundedRect(x + 22, y + 18, w - 44, 112, 14);
+    drawPill(this, x + 22, y + 18, w - 44, 112, {
+      radius: 14, fill: 0xfff1e4, alpha: 1, line: 0xead4be, lineAlpha: 1, lineWidth: 1.5,
+    });
 
     // 胜利小猫立绘站在荣誉横幅右侧
     const winCat = this.add.sprite(x + w - 68, y + 118, 'cat_big', 0)
@@ -124,8 +120,7 @@ export default class LevelCompleteScene extends Phaser.Scene {
     let ry = y + 144;
     rows.forEach(([k, v, tag], i) => {
       if (i % 2 === 0) {
-        innerG.fillStyle(0xf7f1ea, 0.9);
-        innerG.fillRoundedRect(x + 22, ry - 4, w - 44, 26, 7);
+        drawPill(this, x + 22, ry - 4, w - 44, 26, { radius: 7, fill: 0xf7f1ea, alpha: 0.92 });
       }
       const line = this.add.text(x + 36, ry, k, {
         fontFamily: FONT, fontSize: '14px', color: '#7e6c68', fontStyle: 'bold',
@@ -147,11 +142,9 @@ export default class LevelCompleteScene extends Phaser.Scene {
     const traps = Object.entries(d.trapLog || {}).sort((a, b) => b[1] - a[1]);
     if (traps.length) {
       const ty = y + h + 12;
-      const trapG = this.add.graphics();
-      trapG.fillStyle(0x24181c, 0.76);
-      trapG.fillRoundedRect(cx - 325, ty, 650, 48, 14);
-      trapG.lineStyle(1.5, 0xe89090, 0.45);
-      trapG.strokeRoundedRect(cx - 325, ty, 650, 48, 14);
+      drawPill(this, cx - 325, ty, 650, 48, {
+        radius: 14, fill: 0x24181c, alpha: 0.78, line: 0xe89090, lineAlpha: 0.48, lineWidth: 1.5,
+      });
 
       this.add.text(cx, ty + 13, t('complete.traps'), {
         fontFamily: FONT, fontSize: '12px', color: '#ffb6b6', fontStyle: 'bold',
@@ -165,11 +158,9 @@ export default class LevelCompleteScene extends Phaser.Scene {
 
     // —— 底部操作栏（支持键盘与鼠标点击）——
     const hasNext = d.levelId < 3;
-    const footG = this.add.graphics();
-    footG.fillStyle(0x21161a, 0.82);
-    footG.fillRoundedRect(cx - 260, GAME_HEIGHT - 46, 520, 34, 17);
-    footG.lineStyle(1.5, 0xffd26a, 0.65);
-    footG.strokeRoundedRect(cx - 260, GAME_HEIGHT - 46, 520, 34, 17);
+    drawPill(this, cx - 260, GAME_HEIGHT - 46, 520, 34, {
+      radius: 17, fill: 0x21161a, alpha: 0.84, line: 0xffd26a, lineAlpha: 0.68, lineWidth: 1.5,
+    });
 
     this.hint = this.add.text(cx, GAME_HEIGHT - 29,
       hasNext ? t('complete.hintNext') : t('complete.hintMenu'), {

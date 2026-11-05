@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-零依赖的高性能 PIL (Pillow) 兼容渲染层（C + CoreGraphics/CoreText 加速）
-==========================================================================
+零依赖的高性能 PIL (Pillow) 兼容渲染层（C + CoreGraphics/CoreText 亚像素抗锯齿版）
+==================================================================================
 当系统 Python 未安装 Pillow 时，`tools/gen_assets.py` 自动回退到本模块。
 利用 macOS 原生 clang 编译一个轻量级 -O3 C + CoreGraphics/CoreText 动态库，
-实现超采样抗锯齿几何图元、Alpha 混合、高质量降采样以及原生苹方中文字体渲染。
+实现亚像素距离场（SDF smoothstep）抗锯齿图元、双线性平滑旋转、高质量区域积分降采样与原生中文字体渲染。
 """
 
 import ctypes
@@ -15,7 +15,7 @@ import subprocess
 import struct
 import zlib
 
-_DYLIB_PATH = "/tmp/_catmario_pil_c_v3.dylib"
+_DYLIB_PATH = "/tmp/_catmario_pil_c_v4.dylib"
 
 _C_SOURCE = r"""
 #include <stdint.h>
@@ -26,19 +26,31 @@ _C_SOURCE = r"""
 #include <CoreText/CoreText.h>
 #include <CoreFoundation/CoreFoundation.h>
 
-static inline void blend_px(uint8_t *dst, int idx, uint32_t rgba) {
-    uint8_t sa = (uint8_t)(rgba & 0xFF);
+static inline float clamp01(float v) {
+    return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
+}
+
+static inline float smooth_cov(float signed_dist) {
+    // signed_dist < 0 在形状内部，> 0 在外部；[-0.65, +0.65] 平滑过渡消除一切锯齿
+    float t = clamp01(0.5f - signed_dist / 1.3f);
+    return t * t * (3.0f - 2.0f * t);
+}
+
+static inline void blend_px_cov(uint8_t *dst, int idx, uint32_t rgba, float cov) {
+    if (cov <= 0.001f) return;
+    uint32_t base_a = rgba & 0xFF;
+    uint32_t sa = (uint32_t)(base_a * cov + 0.5f);
     if (sa == 0) return;
     uint8_t sr = (uint8_t)((rgba >> 24) & 0xFF);
     uint8_t sg = (uint8_t)((rgba >> 16) & 0xFF);
     uint8_t sb = (uint8_t)((rgba >> 8) & 0xFF);
-    if (sa == 255) {
+    if (sa >= 255) {
         dst[idx] = sr; dst[idx+1] = sg; dst[idx+2] = sb; dst[idx+3] = 255;
         return;
     }
     uint32_t da = dst[idx+3];
     if (da == 0) {
-        dst[idx] = sr; dst[idx+1] = sg; dst[idx+2] = sb; dst[idx+3] = sa;
+        dst[idx] = sr; dst[idx+1] = sg; dst[idx+2] = sb; dst[idx+3] = (uint8_t)sa;
         return;
     }
     uint32_t inv = 255 - sa;
@@ -52,6 +64,10 @@ static inline void blend_px(uint8_t *dst, int idx, uint32_t rgba) {
     dst[idx+1] = (uint8_t)((sg * sa * 255 + dst[idx+1] * da * inv + oa / 2) / oa);
     dst[idx+2] = (uint8_t)((sb * sa * 255 + dst[idx+2] * da * inv + oa / 2) / oa);
     dst[idx+3] = (uint8_t)out_a;
+}
+
+static inline void blend_px(uint8_t *dst, int idx, uint32_t rgba) {
+    blend_px_cov(dst, idx, rgba, 1.0f);
 }
 
 void c_alpha_composite(uint8_t *dst, int dw, int dh, const uint8_t *src, int sw, int sh, int dx, int dy) {
@@ -95,33 +111,50 @@ void c_paste_masked(uint8_t *dst, int dw, int dh, const uint8_t *src, int sw, in
     }
 }
 
+static inline float lanczos_w(float x, float a) {
+    float ax = fabsf(x);
+    if (ax < 1e-5f) return 1.0f;
+    if (ax >= a) return 0.0f;
+    float pix = (float)M_PI * x;
+    return (a * sinf(pix) * sinf(pix / a)) / (pix * pix);
+}
+
 void c_resize_rgba(const uint8_t *src, int sw, int sh, uint8_t *dst, int dw, int dh) {
     float sx_scale = (float)sw / (float)dw;
     float sy_scale = (float)sh / (float)dh;
 
+    // 高精度盒式+亚像素加权预乘 Alpha 降采样，彻底杜绝边缘锯齿与黑边
     for (int dy = 0; dy < dh; dy++) {
-        float cy = (dy + 0.5f) * sy_scale;
-        int y0 = (int)floorf(cy - sy_scale * 0.5f);
-        int y1 = (int)ceilf(cy + sy_scale * 0.5f);
-        if (y1 <= y0) y1 = y0 + 1;
+        float src_y0 = dy * sy_scale;
+        float src_y1 = (dy + 1.0f) * sy_scale;
+        int iy0 = (int)floorf(src_y0);
+        int iy1 = (int)ceilf(src_y1);
+        if (iy1 <= iy0) iy1 = iy0 + 1;
+
         for (int dx = 0; dx < dw; dx++) {
-            float cx = (dx + 0.5f) * sx_scale;
-            int x0 = (int)floorf(cx - sx_scale * 0.5f);
-            int x1 = (int)ceilf(cx + sx_scale * 0.5f);
-            if (x1 <= x0) x1 = x0 + 1;
+            float src_x0 = dx * sx_scale;
+            float src_x1 = (dx + 1.0f) * sx_scale;
+            int ix0 = (int)floorf(src_x0);
+            int ix1 = (int)ceilf(src_x1);
+            if (ix1 <= ix0) ix1 = ix0 + 1;
 
             double r_sum = 0, g_sum = 0, b_sum = 0, a_sum = 0, w_sum = 0;
-            for (int y = y0; y < y1; y++) {
+            for (int y = iy0; y < iy1; y++) {
                 int sy = y < 0 ? 0 : (y >= sh ? sh - 1 : y);
-                for (int x = x0; x < x1; x++) {
+                float wy = fminf(src_y1, y + 1.0f) - fmaxf(src_y0, (float)y);
+                if (wy <= 0.0f) wy = 1.0f;
+                for (int x = ix0; x < ix1; x++) {
                     int sx = x < 0 ? 0 : (x >= sw ? sw - 1 : x);
+                    float wx = fminf(src_x1, x + 1.0f) - fmaxf(src_x0, (float)x);
+                    if (wx <= 0.0f) wx = 1.0f;
+                    double w = (double)(wx * wy);
                     int si = (sy * sw + sx) * 4;
-                    double a = src[si + 3];
+                    double a = src[si + 3] * w;
                     r_sum += src[si] * a;
                     g_sum += src[si + 1] * a;
                     b_sum += src[si + 2] * a;
                     a_sum += a;
-                    w_sum += 1.0;
+                    w_sum += w;
                 }
             }
             int di = (dy * dw + dx) * 4;
@@ -141,20 +174,47 @@ void c_rotate_rgba(const uint8_t *src, int w, int h, uint8_t *dst, float angle_d
     float rad = -angle_deg * (float)M_PI / 180.0f;
     float cs = cosf(rad);
     float sn = sinf(rad);
+    // 双线性预乘 Alpha 插值旋转，消除尾巴/四肢旋转时的阶梯锯齿
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             float dx = x - cx;
             float dy = y - cy;
             float sx = cx + dx * cs - dy * sn;
             float sy = cy + dx * sn + dy * cs;
-            int ix = (int)floorf(sx + 0.5f);
-            int iy = (int)floorf(sy + 0.5f);
+            int x0 = (int)floorf(sx);
+            int y0 = (int)floorf(sy);
+            float fx = sx - x0;
+            float fy = sy - y0;
             int di = (y * w + x) * 4;
-            if (ix >= 0 && ix < w && iy >= 0 && iy < h) {
-                int si = (iy * w + ix) * 4;
-                dst[di] = src[si]; dst[di+1] = src[si+1]; dst[di+2] = src[si+2]; dst[di+3] = src[si+3];
-            } else {
+            if (x0 < -1 || x0 >= w || y0 < -1 || y0 >= h) {
                 dst[di] = dst[di+1] = dst[di+2] = dst[di+3] = 0;
+                continue;
+            }
+            float r_acc = 0.0f, g_acc = 0.0f, b_acc = 0.0f, a_acc = 0.0f;
+            for (int oy = 0; oy <= 1; oy++) {
+                int yy = y0 + oy;
+                if (yy < 0 || yy >= h) continue;
+                float wy = oy == 0 ? (1.0f - fy) : fy;
+                for (int ox = 0; ox <= 1; ox++) {
+                    int xx = x0 + ox;
+                    if (xx < 0 || xx >= w) continue;
+                    float wx = ox == 0 ? (1.0f - fx) : fx;
+                    float wgt = wx * wy;
+                    int si = (yy * w + xx) * 4;
+                    float a = src[si + 3] * wgt;
+                    r_acc += src[si] * a;
+                    g_acc += src[si + 1] * a;
+                    b_acc += src[si + 2] * a;
+                    a_acc += a;
+                }
+            }
+            if (a_acc <= 0.01f) {
+                dst[di] = dst[di+1] = dst[di+2] = dst[di+3] = 0;
+            } else {
+                dst[di]   = (uint8_t)fminf(255.0f, r_acc / a_acc + 0.5f);
+                dst[di+1] = (uint8_t)fminf(255.0f, g_acc / a_acc + 0.5f);
+                dst[di+2] = (uint8_t)fminf(255.0f, b_acc / a_acc + 0.5f);
+                dst[di+3] = (uint8_t)fminf(255.0f, a_acc + 0.5f);
             }
         }
     }
@@ -192,10 +252,9 @@ void c_draw_rrect(uint8_t *buf, int w, int h, int stride,
     if (y1 < y0) { float t = y0; y0 = y1; y1 = t; }
     float rw = x1 - x0, rh = y1 - y0;
     if (r > rw * 0.5f) r = rw * 0.5f;
-    if (r > rh * 0.5f) r = rh * 0.5f;
     if (r < 0.0f) r = 0.0f;
 
-    float pad = has_out ? ow + 1.0f : 1.0f;
+    float pad = has_out ? ow + 2.0f : 2.0f;
     int iy0 = (int)floorf(y0 - pad); if (iy0 < 0) iy0 = 0;
     int iy1 = (int)ceilf(y1 + pad);  if (iy1 >= h) iy1 = h - 1;
     int ix0 = (int)floorf(x0 - pad); if (ix0 < 0) ix0 = 0;
@@ -222,13 +281,26 @@ void c_draw_rrect(uint8_t *buf, int w, int h, int stride,
                 dist = fmaxf(ox, oy);
             }
             int idx = (y * w + x) * stride;
-            if (has_fill && dist <= 0.25f) {
-                if (stride == 1) buf[idx] = f_l;
-                else blend_px(buf, idx, f_rgba);
+            if (has_fill && dist < 0.7f) {
+                float cov = smooth_cov(dist);
+                if (stride == 1) {
+                    uint8_t v = (uint8_t)(f_l * cov + buf[idx] * (1.0f - cov) + 0.5f);
+                    if (v > buf[idx]) buf[idx] = v;
+                } else {
+                    blend_px_cov(buf, idx, f_rgba, cov);
+                }
             }
-            if (has_out && fabsf(dist) <= half_w) {
-                if (stride == 1) buf[idx] = o_l;
-                else blend_px(buf, idx, o_rgba);
+            if (has_out) {
+                float odist = fabsf(dist) - half_w;
+                if (odist < 0.7f) {
+                    float cov = smooth_cov(odist);
+                    if (stride == 1) {
+                        uint8_t v = (uint8_t)(o_l * cov + buf[idx] * (1.0f - cov) + 0.5f);
+                        if (v > buf[idx]) buf[idx] = v;
+                    } else {
+                        blend_px_cov(buf, idx, o_rgba, cov);
+                    }
+                }
             }
         }
     }
@@ -243,35 +315,43 @@ void c_draw_ellipse(uint8_t *buf, int w, int h, int stride,
     float ry = (y1 - y0) * 0.5f;
     if (rx <= 0.1f || ry <= 0.1f) return;
 
-    float pad = has_out ? ow + 2.0f : 1.0f;
+    float pad = has_out ? ow + 2.5f : 2.0f;
     int iy0 = (int)floorf(y0 - pad); if (iy0 < 0) iy0 = 0;
     int iy1 = (int)ceilf(y1 + pad);  if (iy1 >= h) iy1 = h - 1;
     int ix0 = (int)floorf(x0 - pad); if (ix0 < 0) ix0 = 0;
     int ix1 = (int)ceilf(x1 + pad);  if (ix1 >= w) ix1 = w - 1;
 
-    float rx_in = fmaxf(0.1f, rx - ow * 0.5f);
-    float ry_in = fmaxf(0.1f, ry - ow * 0.5f);
-    float rx_out = rx + ow * 0.5f;
-    float ry_out = ry + ow * 0.5f;
+    float avg_r = 0.5f * (rx + ry);
+    float half_w = ow * 0.5f;
     uint8_t f_l = (uint8_t)((f_rgba >> 24) & 0xFF);
     uint8_t o_l = (uint8_t)((o_rgba >> 24) & 0xFF);
 
     for (int y = iy0; y <= iy1; y++) {
-        float dy = (y + 0.5f) - cy;
+        float dy = ((y + 0.5f) - cy) / ry;
         for (int x = ix0; x <= ix1; x++) {
-            float dx = (x + 0.5f) - cx;
-            float n_fill = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
+            float dx = ((x + 0.5f) - cx) / rx;
+            float norm_d = sqrtf(dx * dx + dy * dy);
+            float dist = (norm_d - 1.0f) * avg_r;
             int idx = (y * w + x) * stride;
-            if (has_fill && n_fill <= 1.0f) {
-                if (stride == 1) buf[idx] = f_l;
-                else blend_px(buf, idx, f_rgba);
+            if (has_fill && dist < 0.7f) {
+                float cov = smooth_cov(dist);
+                if (stride == 1) {
+                    uint8_t v = (uint8_t)(f_l * cov + buf[idx] * (1.0f - cov) + 0.5f);
+                    if (v > buf[idx]) buf[idx] = v;
+                } else {
+                    blend_px_cov(buf, idx, f_rgba, cov);
+                }
             }
             if (has_out) {
-                float n_in = (dx * dx) / (rx_in * rx_in) + (dy * dy) / (ry_in * ry_in);
-                float n_out = (dx * dx) / (rx_out * rx_out) + (dy * dy) / (ry_out * ry_out);
-                if (n_in >= 1.0f && n_out <= 1.0f) {
-                    if (stride == 1) buf[idx] = o_l;
-                    else blend_px(buf, idx, o_rgba);
+                float odist = fabsf(dist) - half_w;
+                if (odist < 0.7f) {
+                    float cov = smooth_cov(odist);
+                    if (stride == 1) {
+                        uint8_t v = (uint8_t)(o_l * cov + buf[idx] * (1.0f - cov) + 0.5f);
+                        if (v > buf[idx]) buf[idx] = v;
+                    } else {
+                        blend_px_cov(buf, idx, o_rgba, cov);
+                    }
                 }
             }
         }
@@ -290,16 +370,14 @@ void c_draw_pie_arc(uint8_t *buf, int w, int h, int stride,
     while (a0 < 0.0f) { a0 += 360.0f; a1 += 360.0f; }
     while (a1 < a0) a1 += 360.0f;
 
-    float pad = ow + 2.0f;
+    float pad = ow + 2.5f;
     int iy0 = (int)floorf(y0 - pad); if (iy0 < 0) iy0 = 0;
     int iy1 = (int)ceilf(y1 + pad);  if (iy1 >= h) iy1 = h - 1;
     int ix0 = (int)floorf(x0 - pad); if (ix0 < 0) ix0 = 0;
     int ix1 = (int)ceilf(x1 + pad);  if (ix1 >= w) ix1 = w - 1;
 
-    float rx_in = fmaxf(0.1f, rx - ow * 0.5f);
-    float ry_in = fmaxf(0.1f, ry - ow * 0.5f);
-    float rx_out = rx + ow * 0.5f;
-    float ry_out = ry + ow * 0.5f;
+    float avg_r = 0.5f * (rx + ry);
+    float half_w = ow * 0.5f;
     uint8_t f_l = (uint8_t)((f_rgba >> 24) & 0xFF);
     uint8_t o_l = (uint8_t)((o_rgba >> 24) & 0xFF);
 
@@ -313,17 +391,19 @@ void c_draw_pie_arc(uint8_t *buf, int w, int h, int stride,
             if (!in_ang) continue;
 
             int idx = (y * w + x) * stride;
-            float n_fill = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
-            if (is_pie && has_fill && n_fill <= 1.0f) {
-                if (stride == 1) buf[idx] = f_l;
-                else blend_px(buf, idx, f_rgba);
+            float norm_d = sqrtf((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry));
+            float dist = (norm_d - 1.0f) * avg_r;
+            if (is_pie && has_fill && dist < 0.7f) {
+                float cov = smooth_cov(dist);
+                if (stride == 1) buf[idx] = (uint8_t)(f_l * cov);
+                else blend_px_cov(buf, idx, f_rgba, cov);
             }
             if (has_out) {
-                float n_in = (dx * dx) / (rx_in * rx_in) + (dy * dy) / (ry_in * ry_in);
-                float n_out = (dx * dx) / (rx_out * rx_out) + (dy * dy) / (ry_out * ry_out);
-                if (n_in >= 1.0f && n_out <= 1.0f) {
-                    if (stride == 1) buf[idx] = o_l;
-                    else blend_px(buf, idx, o_rgba);
+                float odist = fabsf(dist) - half_w;
+                if (odist < 0.7f) {
+                    float cov = smooth_cov(odist);
+                    if (stride == 1) buf[idx] = (uint8_t)(o_l * cov);
+                    else blend_px_cov(buf, idx, o_rgba, cov);
                 }
             }
         }
@@ -333,10 +413,10 @@ void c_draw_pie_arc(uint8_t *buf, int w, int h, int stride,
 void c_draw_seg(uint8_t *buf, int w, int h, int stride,
                 float ax, float ay, float bx, float by, float width, uint32_t rgba) {
     float rad = fmaxf(0.5f, width * 0.5f);
-    float minx = fminf(ax, bx) - rad - 1.0f;
-    float maxx = fmaxf(ax, bx) + rad + 1.0f;
-    float miny = fminf(ay, by) - rad - 1.0f;
-    float maxy = fmaxf(ay, by) + rad + 1.0f;
+    float minx = fminf(ax, bx) - rad - 2.0f;
+    float maxx = fmaxf(ax, bx) + rad + 2.0f;
+    float miny = fminf(ay, by) - rad - 2.0f;
+    float maxy = fmaxf(ay, by) + rad + 2.0f;
     int ix0 = (int)floorf(minx); if (ix0 < 0) ix0 = 0;
     int ix1 = (int)ceilf(maxx);  if (ix1 >= w) ix1 = w - 1;
     int iy0 = (int)floorf(miny); if (iy0 < 0) iy0 = 0;
@@ -344,7 +424,6 @@ void c_draw_seg(uint8_t *buf, int w, int h, int stride,
 
     float vx = bx - ax, vy = by - ay;
     float len2 = vx * vx + vy * vy;
-    float r2 = rad * rad;
     uint8_t l_val = (uint8_t)((rgba >> 24) & 0xFF);
 
     for (int y = iy0; y <= iy1; y++) {
@@ -359,10 +438,16 @@ void c_draw_seg(uint8_t *buf, int w, int h, int stride,
             }
             float dx = px - (ax + t * vx);
             float dy = py - (ay + t * vy);
-            if (dx * dx + dy * dy <= r2) {
+            float dist = sqrtf(dx * dx + dy * dy) - rad;
+            if (dist < 0.7f) {
+                float cov = smooth_cov(dist);
                 int idx = (y * w + x) * stride;
-                if (stride == 1) buf[idx] = l_val;
-                else blend_px(buf, idx, rgba);
+                if (stride == 1) {
+                    uint8_t v = (uint8_t)(l_val * cov + buf[idx] * (1.0f - cov) + 0.5f);
+                    if (v > buf[idx]) buf[idx] = v;
+                } else {
+                    blend_px_cov(buf, idx, rgba, cov);
+                }
             }
         }
     }
@@ -404,12 +489,22 @@ void c_fill_poly(uint8_t *buf, int w, int h, int stride,
             }
         }
         for (int i = 0; i + 1 < k; i += 2) {
-            int x0 = (int)floorf(nodes[i]);     if (x0 < 0) x0 = 0;
-            int x1 = (int)ceilf(nodes[i + 1]);  if (x1 >= w) x1 = w - 1;
+            float left = nodes[i], right = nodes[i + 1];
+            int x0 = (int)floorf(left - 1.0f);  if (x0 < 0) x0 = 0;
+            int x1 = (int)ceilf(right + 1.0f);  if (x1 >= w) x1 = w - 1;
             for (int x = x0; x <= x1; x++) {
-                int idx = (y * w + x) * stride;
-                if (stride == 1) buf[idx] = l_val;
-                else blend_px(buf, idx, rgba);
+                float px = x + 0.5f;
+                float d = fmaxf(left - px, px - right);
+                if (d < 0.65f) {
+                    float cov = smooth_cov(d);
+                    int idx = (y * w + x) * stride;
+                    if (stride == 1) {
+                        uint8_t v = (uint8_t)(l_val * cov + buf[idx] * (1.0f - cov) + 0.5f);
+                        if (v > buf[idx]) buf[idx] = v;
+                    } else {
+                        blend_px_cov(buf, idx, rgba, cov);
+                    }
+                }
             }
         }
     }
@@ -804,15 +899,16 @@ class ImageDraw:
                     _u8_ptr(self.im.buf), self.im.width, self.im.height, self.im.stride,
                     arr, n, fc,
                 )
-            if outline is not None:
+            if outline is not None and width > 0:
                 self.line(list(pts) + [pts[0]], fill=outline, width=width)
 
         def text(self, xy, s, font=None, fill=None):
-            if self.im.mode != "RGBA":
+            if not s or fill is None:
                 return
-            c = _pack_rgba(fill or (58, 46, 50, 255), "RGBA")
-            fsize = float(getattr(font, "size", 24))
+            x, y = float(xy[0]), float(xy[1])
+            sz = float(getattr(font, "size", 20)) if font else 20.0
+            c = _pack_rgba(fill, self.im.mode)
             _LIB.c_draw_text(
                 _u8_ptr(self.im.buf), self.im.width, self.im.height,
-                float(xy[0]), float(xy[1]), s.encode("utf-8"), fsize, c,
+                x, y, s.encode("utf-8"), sz, c,
             )

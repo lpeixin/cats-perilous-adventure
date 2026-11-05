@@ -36,7 +36,8 @@ except ImportError:
     from _pil_shim import Image, ImageDraw, ImageFilter
 
 ASSETS = os.path.join(ROOT, "assets")
-SS = 4  # 超采样倍率
+HD = 2  # 高清输出倍率（所有精灵/瓦片/UI 均以 2× Retina 高清分辨率输出）
+SS = 6  # 超采样倍率（内部以 6× 逻辑分辨率结合 SDF 抗锯齿绘制，再降采样至 2× HD）
 
 # ---------------------------------------------------------------------------
 # 调色板（全项目唯一色彩来源，保证风格统一）
@@ -157,9 +158,10 @@ def shade(col, t):
 class Layer:
     """一个超采样绘制层。所有对外坐标都是"逻辑像素"，内部自动乘 ss。"""
 
-    def __init__(self, w, h, mode="RGBA", bg=None, ss=SS):
+    def __init__(self, w, h, mode="RGBA", bg=None, ss=SS, hd=HD):
         self.w, self.h = w, h
         self.ss = ss
+        self.hd = hd
         if bg is None:
             bg = (0, 0, 0, 0) if mode == "RGBA" else 0
         self.im = Image.new(mode, (w * ss, h * ss), bg)
@@ -233,30 +235,30 @@ class Layer:
         self._refresh()
 
     def clip(self, mask_layer, draw_fn):
-        lay = Layer(self.w, self.h, ss=self.ss)
+        lay = Layer(self.w, self.h, ss=self.ss, hd=self.hd)
         draw_fn(lay)
         self.paste(lay, mask_layer)
 
     def blurred(self, radius=1.0):
-        out = Layer(self.w, self.h, ss=self.ss)
+        out = Layer(self.w, self.h, ss=self.ss, hd=self.hd)
         out.im = self.im.filter(ImageFilter.GaussianBlur(radius * self.ss))
         out._refresh()
         return out
 
     def copy(self):
-        out = Layer(self.w, self.h, ss=self.ss)
+        out = Layer(self.w, self.h, ss=self.ss, hd=self.hd)
         out.im = self.im.copy()
         out._refresh()
         return out
 
     def mask_of(self):
-        m = Layer(self.w, self.h, "L", ss=self.ss)
+        m = Layer(self.w, self.h, "L", ss=self.ss, hd=self.hd)
         m.im = self.im.getchannel("A").copy()
         m._refresh()
         return m
 
     def out(self):
-        return self.im.resize((self.w, self.h), Image.LANCZOS)
+        return self.im.resize((self.w * self.hd, self.h * self.hd), Image.LANCZOS)
 
 
 # ---------------------------------------------------------------------------
@@ -302,9 +304,10 @@ def save(img, *parts):
 def sheet(frames, cw, ch, cols=None):
     cols = cols or len(frames)
     rows = math.ceil(len(frames) / cols)
-    out = Image.new("RGBA", (cw * cols, ch * rows), (0, 0, 0, 0))
+    cw_hd, ch_hd = cw * HD, ch * HD
+    out = Image.new("RGBA", (cw_hd * cols, ch_hd * rows), (0, 0, 0, 0))
     for i, f in enumerate(frames):
-        out.paste(f, ((i % cols) * cw, (i // cols) * ch), f)
+        out.paste(f, ((i % cols) * cw_hd, (i // cols) * ch_hd), f)
     return out
 
 
@@ -936,8 +939,9 @@ def _pipe_piece(with_rim):
 def tile_pipe_set():
     top = _pipe_piece(True)
     bot = _pipe_piece(False)
-    return (top.crop((0, 0, TS, TS)), top.crop((TS, 0, TS * 2, TS)),
-            bot.crop((0, 0, TS, TS)), bot.crop((TS, 0, TS * 2, TS)))
+    T = TS * HD
+    return (top.crop((0, 0, T, T)), top.crop((T, 0, T * 2, T)),
+            bot.crop((0, 0, T, T)), bot.crop((T, 0, T * 2, T)))
 
 
 def tile_crumble(frame=0, ground=False):
@@ -1037,7 +1041,7 @@ BW, BH = 960, 540
 
 
 def bg_sky():
-    lay = Layer(BW, BH, ss=2)
+    lay = Layer(BW, BH, ss=4, hd=HD)
     for y in range(BH):
         t = y / (BH - 1)
         if t < 0.58:
@@ -1058,7 +1062,7 @@ def bg_far():
     远景：高耸的雪顶远山 + 柔美层叠丘陵 + 远景云海。
     注意山峰与丘陵顶点分布在 y=170..360，确保在关卡相机视角下不会被地面遮挡！
     """
-    lay = Layer(BW, BH, ss=2)
+    lay = Layer(BW, BH, ss=4, hd=HD)
 
     # 1) 极远处的柔和山脉与雪顶
     peaks = (
@@ -1115,7 +1119,7 @@ def bg_mid():
     林木根部对齐在 y=385 左右（下方连绵绿坡直达 y=540），
     保证在关卡内相机视口（地面约在屏幕 y=350..420）中能清晰展现茂密树冠！
     """
-    lay = Layer(BW, BH, ss=2)
+    lay = Layer(BW, BH, ss=4, hd=HD)
 
     # 连绵近景草坡底座
     for cx, cy, rx, ry in ((180.0, 445.0, 280.0, 95.0),
@@ -1292,7 +1296,7 @@ def ui_icon(kind):
 
 def app_icon():
     S = 512
-    lay = Layer(S, S, ss=2)
+    lay = Layer(S, S, ss=2, hd=1)
     lay.rrect((0, 0, S, S), 104.0, fill=(255, 214, 136, 255))
     lay.clip(lay.mask_of(), lambda l: l.ell(S * 0.5, S * 1.02, S * 0.58, S * 0.44,
                                             fill=(248, 178, 92, 255)))
@@ -1371,7 +1375,7 @@ def gen_preview():
     """产出《美术风格小样》—— 供确认风格用的静态预览图（ss=2，支持原生中文字体）。"""
     W, H = 1280, 1000
     ps = 2
-    lay = Layer(W, H, ss=ps)
+    lay = Layer(W, H, ss=ps, hd=1)
     lay.rrect((0, 0, W, H), 0, fill=(248, 245, 240, 255))
     lay.rrect((0, 0, W, 96), 0, fill=(54, 38, 44, 255))
     lay.ell(70, 48, 26, 26, fill=C("cat"), outline=C("ink"), width=2)
@@ -1390,13 +1394,15 @@ def gen_preview():
         lay.d.text((x * ps, y * ps), s, font=f, fill=fill)
 
     txt(120, 22, "猫咪历险记  Cat's Perilous Adventure", 30, (255, 236, 214, 255))
-    txt(120, 60, "STUDIO ART SAMPLE  ·  高分辨率精致卡通 · 48px 瓦片 / 64px 角色", 15,
+    txt(120, 60, "STUDIO ART SAMPLE  ·  2× Retina 超清抗锯齿 · 96px 瓦片 / 128px 角色", 15,
         (206, 188, 178, 255))
 
     def paste_center(img, cx, cy, scale=1):
-        if scale != 1:
-            img = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
-        img_ss = img.resize((img.width * ps, img.height * ps), Image.LANCZOS)
+        eff = (scale * ps) / HD
+        img_ss = img if abs(eff - 1.0) < 1e-4 else img.resize(
+            (max(1, int(round(img.width * eff))), max(1, int(round(img.height * eff)))),
+            Image.LANCZOS,
+        )
         lay.im.alpha_composite(img_ss, (int(cx * ps - img_ss.width / 2), int(cy * ps - img_ss.height / 2)))
         lay._refresh()
 
@@ -1427,14 +1433,14 @@ def gen_preview():
     paste_center(Image.open(os.path.join(ASSETS, "sprites", "goal_pole.png")), 820, y + 20, 0.5)
     y += 60
 
-    txt(40, y, "瓦片（48×48，全出血无缝，自然层状土与丰茂草檐）", 19)
+    txt(40, y, "瓦片（2× Retina 高清，全出血无缝，自然层状土与丰茂草檐）", 19)
     y += 30
     names = ["ground_top", "ground_fill", "brick", "stone", "question_used",
              "pipe_tl", "pipe_tr", "pipe_bl", "pipe_br", "spike", "invisible", "conveyor"]
     for i, n in enumerate(names):
         im = Image.open(os.path.join(ASSETS, "tiles", n + ".png"))
-        if im.width > 48:
-            im = im.crop((0, 0, 48, 48))
+        if im.width > 48 * HD:
+            im = im.crop((0, 0, 48 * HD, 48 * HD))
         paste_center(im, 60 + i * 56, y + 24)
     y += 60
     for i, n in enumerate(("question", "crumble", "lava", "water")):

@@ -49,7 +49,12 @@ async function shootLang(lang) {
 
   // 用 URL 参数强制语言（i18n 的最高优先级），保证截图语言可控
   const url = `${BASE}${BASE.includes('?') ? '&' : '?'}lang=${lang}`;
-  const session = await launch({ url, port: 9344 + LANGS.indexOf(lang), windowSize: '1000,620' });
+  const session = await launch({
+    url,
+    port: 9344 + LANGS.indexOf(lang),
+    windowSize: '1000,620',
+    extraArgs: ['--force-device-scale-factor=2'],
+  });
   const { cdp } = session;
 
   try {

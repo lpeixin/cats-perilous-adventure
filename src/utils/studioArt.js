@@ -9,13 +9,65 @@
  */
 import { GAME_WIDTH, GAME_HEIGHT } from './constants.js';
 
-function makeCanvas(textures, key, w, h, drawFn) {
+/**
+ * 将高分纹理（scale × 物理像素）的帧几何尺寸归一化为 1× 逻辑像素，
+ * 同时保留完整 [0..1] WebGL UV 采样范围，使物理碰撞与布局零改动即可享受 Retina 画质。
+ */
+export function normalizeTextureLogicalScale(tex, scale) {
+  if (!tex || !scale || scale === 1) return;
+  const inv = 1 / scale;
+  const frames = tex.frames ? Object.values(tex.frames) : [];
+  for (const f of frames) {
+    if (!f || f.__hdNormalized) continue;
+    f.__hdNormalized = true;
+    const { u0, v0, u1, v1 } = f;
+    f.width = Math.round(f.width * inv);
+    f.height = Math.round(f.height * inv);
+    f.halfWidth = Math.floor(f.width * 0.5);
+    f.halfHeight = Math.floor(f.height * 0.5);
+    f.centerX = Math.floor(f.width * 0.5);
+    f.centerY = Math.floor(f.height * 0.5);
+    f.cutX = Math.round(f.cutX * inv);
+    f.cutY = Math.round(f.cutY * inv);
+    f.cutWidth = Math.round(f.cutWidth * inv);
+    f.cutHeight = Math.round(f.cutHeight * inv);
+    if (f.data) {
+      if (f.data.cut) {
+        f.data.cut.x = f.cutX;
+        f.data.cut.y = f.cutY;
+        f.data.cut.w = f.cutWidth;
+        f.data.cut.h = f.cutHeight;
+        f.data.cut.r = f.cutX + f.cutWidth;
+        f.data.cut.b = f.cutY + f.cutHeight;
+      }
+      if (f.data.sourceSize) {
+        f.data.sourceSize.w = f.width;
+        f.data.sourceSize.h = f.height;
+      }
+      if (f.data.spriteSourceSize) {
+        f.data.spriteSourceSize.w = f.width;
+        f.data.spriteSourceSize.h = f.height;
+      }
+    }
+    f.u0 = u0;
+    f.v0 = v0;
+    f.u1 = u1;
+    f.v1 = v1;
+  }
+}
+
+function makeCanvas(textures, key, w, h, drawFn, scale = null) {
   if (textures.exists(key)) return;
-  const cv = textures.createCanvas(key, w, h);
+  const s = scale || (w >= 512 ? 2 : 3);
+  const cv = textures.createCanvas(key, Math.round(w * s), Math.round(h * s));
   const ctx = cv.getContext();
-  ctx.clearRect(0, 0, w, h);
+  ctx.clearRect(0, 0, w * s, h * s);
+  ctx.save();
+  ctx.scale(s, s);
   drawFn(ctx, w, h);
+  ctx.restore();
   cv.refresh();
+  normalizeTextureLogicalScale(textures.get(key), s);
 }
 
 function roundRectPath(ctx, x, y, w, h, r) {

@@ -8,7 +8,7 @@
 import { GAME_WIDTH, GAME_HEIGHT, LEVELS } from '../utils/constants.js';
 import { audio } from '../utils/audio.js';
 import { formatTime, deathTaunt } from '../utils/save.js';
-import { drawCard } from '../ui/Hud.js';
+import { drawCard, drawPill, drawCircleBadge } from '../ui/Hud.js';
 import { t } from '../utils/i18n.js';
 
 const FONT = 'PingFang SC, Helvetica Neue, Arial, sans-serif';
@@ -37,17 +37,14 @@ export default class GameOverScene extends Phaser.Scene {
     drawCard(this, x, y, w, h, { radius: 22, alpha: 0.98, selected: true });
 
     // 内嵌装饰面板
-    const innerG = this.add.graphics();
-    innerG.fillStyle(0xf8eee4, 1);
-    innerG.fillRoundedRect(x + 28, y + 108, w - 56, 98, 14);
-    innerG.lineStyle(1.5, 0xe4d0be, 1);
-    innerG.strokeRoundedRect(x + 28, y + 108, w - 56, 98, 14);
+    drawPill(this, x + 28, y + 108, w - 56, 98, {
+      radius: 14, fill: 0xf8eee4, alpha: 1, line: 0xe4d0be, lineAlpha: 1, lineWidth: 1.5,
+    });
 
     // 委屈巴巴的小猫徽章
-    innerG.fillStyle(0xffe4bc, 1);
-    innerG.fillCircle(GAME_WIDTH / 2, y - 16, 36);
-    innerG.lineStyle(3, 0xe6a040, 1);
-    innerG.strokeCircle(GAME_WIDTH / 2, y - 16, 36);
+    drawCircleBadge(this, GAME_WIDTH / 2, y - 16, 36, {
+      fill: 0xffe4bc, line: 0xe6a040, lineWidth: 3,
+    });
 
     const cat = this.add.sprite(GAME_WIDTH / 2, y - 16, 'cat_small', 9).setScale(1.45);
     this.tweens.add({
@@ -80,11 +77,9 @@ export default class GameOverScene extends Phaser.Scene {
 
     // 底部提示胶囊（支持点击重试）
     const cx = GAME_WIDTH / 2;
-    const footG = this.add.graphics();
-    footG.fillStyle(0x21161a, 0.85);
-    footG.fillRoundedRect(cx - 240, GAME_HEIGHT - 64, 480, 36, 18);
-    footG.lineStyle(1.5, 0xffd26a, 0.65);
-    footG.strokeRoundedRect(cx - 240, GAME_HEIGHT - 64, 480, 36, 18);
+    drawPill(this, cx - 240, GAME_HEIGHT - 64, 480, 36, {
+      radius: 18, fill: 0x21161a, alpha: 0.85, line: 0xffd26a, lineAlpha: 0.68, lineWidth: 1.5,
+    });
 
     const hint = this.add.text(cx, GAME_HEIGHT - 46,
       t('over.hint'), {

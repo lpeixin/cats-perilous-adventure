@@ -8,10 +8,13 @@
  */
 import { GAME_WIDTH, GAME_HEIGHT, LEVELS } from '../utils/constants.js';
 import { registerAnimations } from '../utils/animations.js';
-import { buildStudioTextures } from '../utils/studioArt.js';
+import { buildStudioTextures, normalizeTextureLogicalScale } from '../utils/studioArt.js';
 import { t } from '../utils/i18n.js';
 
-/** 需要按精灵表切分的图（key, 路径, 单帧宽, 单帧高） */
+/** PNG 素材的高清倍率（与 tools/gen_assets.py 中 HD = 2 对应） */
+const ASSET_HD = 2;
+
+/** 需要按精灵表切分的图（key, 路径, 逻辑单帧宽, 逻辑单帧高） */
 const SHEETS = [
   ['cat_small', 'assets/sprites/cat_small.png', 64, 64],
   ['cat_big', 'assets/sprites/cat_big.png', 64, 64],
@@ -59,6 +62,9 @@ const IMAGES = [
   ['icon_clock', 'assets/ui/icon_clock.png'],
 ];
 
+/** TileSprite 使用完整 2× 源图配合 setTileScale(0.5)，不缩小 frame.cutWidth */
+const TILESPRITE_KEYS = new Set(['bg_far', 'bg_mid']);
+
 const FONT = 'PingFang SC, Helvetica Neue, Arial, sans-serif';
 
 export default class PreloadScene extends Phaser.Scene {
@@ -70,7 +76,12 @@ export default class PreloadScene extends Phaser.Scene {
     this.buildLoadingUI();
 
     for (const [key, path] of IMAGES) this.load.image(key, path);
-    for (const [key, path, w, h] of SHEETS) this.load.spritesheet(key, path, { frameWidth: w, frameHeight: h });
+    for (const [key, path, w, h] of SHEETS) {
+      this.load.spritesheet(key, path, {
+        frameWidth: w * ASSET_HD,
+        frameHeight: h * ASSET_HD,
+      });
+    }
     for (const lv of LEVELS) this.load.json(lv.key, lv.file);
 
     this.load.on('progress', (p) => this.setProgress(p));
@@ -81,6 +92,16 @@ export default class PreloadScene extends Phaser.Scene {
   }
 
   create() {
+    for (const [key] of IMAGES) {
+      if (!TILESPRITE_KEYS.has(key) && this.textures.exists(key)) {
+        normalizeTextureLogicalScale(this.textures.get(key), ASSET_HD);
+      }
+    }
+    for (const [key] of SHEETS) {
+      if (this.textures.exists(key)) {
+        normalizeTextureLogicalScale(this.textures.get(key), ASSET_HD);
+      }
+    }
     this.buildAmbientTextures();
     if (this.loadError) {
       this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 24, t('loading.error'), {
@@ -101,21 +122,57 @@ export default class PreloadScene extends Phaser.Scene {
 
     this.cameras.main.setBackgroundColor(0x241a20);
 
-    // 柔和背景装饰与徽章
+    // 柔和背景渐变
     const bgG = this.add.graphics();
     bgG.fillGradientStyle(0x33242c, 0x33242c, 0x1e151a, 0x1e151a, 1);
     bgG.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-    // 圆形猫耳徽章光晕
-    bgG.fillStyle(0xffc842, 0.08);
-    bgG.fillCircle(cx, cy - 115, 72);
-    bgG.fillStyle(0xf4943e, 1);
-    bgG.fillTriangle(cx - 22, cy - 126, cx - 14, cy - 148, cx - 4, cy - 128);
-    bgG.fillTriangle(cx + 4, cy - 128, cx + 14, cy - 148, cx + 22, cy - 126);
-    bgG.fillCircle(cx, cy - 112, 22);
-    bgG.fillStyle(0x2d2024, 1);
-    bgG.fillCircle(cx - 8, cy - 114, 3.2);
-    bgG.fillCircle(cx + 8, cy - 114, 3.2);
+    // 使用 3× 超采样 2D Canvas 绘制猫耳徽章与进度条底槽，杜绝 WebGL Graphics 多边形锯齿
+    const S = 3;
+    if (!this.textures.exists('__preload_emblem')) {
+      const cv = this.textures.createCanvas('__preload_emblem', 160 * S, 160 * S);
+      const ctx = cv.getContext();
+      ctx.save();
+      ctx.scale(S, S);
+      const rg = ctx.createRadialGradient(80, 84, 6, 80, 84, 72);
+      rg.addColorStop(0, 'rgba(255, 200, 66, 0.20)');
+      rg.addColorStop(1, 'rgba(255, 200, 66, 0)');
+      ctx.fillStyle = rg;
+      ctx.beginPath();
+      ctx.arc(80, 84, 72, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#f4943e';
+      ctx.strokeStyle = '#1b1216';
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      for (const [x0, y0, x1, y1, x2, y2] of [
+        [58, 70, 66, 46, 76, 68],
+        [84, 68, 94, 46, 102, 70],
+      ]) {
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(80, 84, 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#2d2024';
+      ctx.beginPath();
+      ctx.arc(72, 82, 3.2, 0, Math.PI * 2);
+      ctx.arc(88, 82, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      cv.refresh();
+      normalizeTextureLogicalScale(this.textures.get('__preload_emblem'), S);
+    }
+    this.add.image(cx, cy - 115, '__preload_emblem');
 
     this.add.text(cx, cy - 58, t('loading.title'), {
       fontFamily: FONT, fontSize: '42px', color: '#ffefdb', fontStyle: 'bold',
@@ -129,16 +186,14 @@ export default class PreloadScene extends Phaser.Scene {
 
     const barW = 440;
     const barH = 22;
-    const trackG = this.add.graphics();
-    trackG.fillStyle(0x130d10, 0.65);
-    trackG.fillRoundedRect(cx - barW / 2 - 5, cy + 23, barW + 10, barH + 10, 16);
-    trackG.lineStyle(2, 0x624952, 0.7);
-    trackG.strokeRoundedRect(cx - barW / 2 - 5, cy + 23, barW + 10, barH + 10, 16);
-    trackG.fillStyle(0x3a2b32, 0.9);
-    trackG.fillRoundedRect(cx - barW / 2, cy + 28, barW, barH, 11);
-
-    this.barG = this.add.graphics();
-    this.barGeom = { x: cx - barW / 2, y: cy + 28, w: barW, h: barH };
+    const pad = 8;
+    const cw = barW + pad * 2;
+    const ch = barH + pad * 2;
+    if (this.textures.exists('__preload_bar')) this.textures.remove('__preload_bar');
+    this.barCanvas = this.textures.createCanvas('__preload_bar', cw * S, ch * S);
+    normalizeTextureLogicalScale(this.textures.get('__preload_bar'), S);
+    this.add.image(cx, cy + 39, '__preload_bar');
+    this.barGeom = { w: barW, h: barH, pad, cw, ch, s: S };
 
     this.pctText = this.add.text(cx, cy + 78, t('loading.progress', { p: 0 }), {
       fontFamily: FONT, fontSize: '14px', color: '#e2cfc4', fontStyle: 'bold',
@@ -148,18 +203,56 @@ export default class PreloadScene extends Phaser.Scene {
       fontFamily: FONT, fontSize: '13px', color: '#9c8a84',
       wordWrap: { width: GAME_WIDTH - 200 },
     }).setOrigin(0.5);
+
+    this.setProgress(0.02);
   }
 
   setProgress(p) {
-    const { x, y, w, h } = this.barGeom;
-    this.barG.clear();
-    const filled = Math.max(12, w * p);
-    this.barG.fillStyle(0xf09236, 1);
-    this.barG.fillRoundedRect(x, y, filled, h, 11);
-    this.barG.fillStyle(0xffcf4a, 1);
-    this.barG.fillRoundedRect(x, y, filled, h - 4, 10);
-    this.barG.fillStyle(0xfff4be, 0.55);
-    this.barG.fillRoundedRect(x + 4, y + 3, Math.max(4, filled - 8), 6, 4);
+    if (this.barCanvas && this.barGeom) {
+      const { w, h, pad, cw, ch, s } = this.barGeom;
+      const ctx = this.barCanvas.getContext();
+      ctx.clearRect(0, 0, cw * s, ch * s);
+      ctx.save();
+      ctx.scale(s, s);
+
+      const rr = (x, y, rw, rh, r) => {
+        const rad = Math.min(r, rw / 2, rh / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + rad, y);
+        ctx.arcTo(x + rw, y, x + rw, y + rh, rad);
+        ctx.arcTo(x + rw, y + rh, x, y + rh, rad);
+        ctx.arcTo(x, y + rh, x, y, rad);
+        ctx.arcTo(x, y, x + rw, y, rad);
+        ctx.closePath();
+      };
+
+      rr(pad - 5, pad - 5, w + 10, h + 10, 16);
+      ctx.fillStyle = 'rgba(19, 13, 16, 0.68)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(98, 73, 82, 0.75)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      rr(pad, pad, w, h, 11);
+      ctx.fillStyle = 'rgba(58, 43, 50, 0.92)';
+      ctx.fill();
+
+      const filled = Math.max(14, w * p);
+      rr(pad, pad, filled, h, 11);
+      ctx.fillStyle = '#f09236';
+      ctx.fill();
+
+      rr(pad, pad, filled, h - 4, 10);
+      ctx.fillStyle = '#ffcf4a';
+      ctx.fill();
+
+      rr(pad + 4, pad + 3, Math.max(4, filled - 8), 6, 3);
+      ctx.fillStyle = 'rgba(255, 244, 190, 0.6)';
+      ctx.fill();
+
+      ctx.restore();
+      this.barCanvas.refresh();
+    }
 
     if (this.pctText) {
       const str = t('loading.progress', { p: Math.round(p * 100) });
