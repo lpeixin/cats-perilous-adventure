@@ -464,34 +464,47 @@ setTimeout(() => {
           'Δy=' + (conv.tile.y - y0).toFixed(0) + ' 状态=' + conv.state);
     }
 
-    // ---- 11. 假道具真陷阱 ----
-    const fakeQ = L.level.tiles.find((t) => t.type === 'fakeQuestion');
-    if (fakeQ) {
-      const n0 = L.enemyList.length;
-      L.bumpQuestionBlock(fakeQ.obj);
-      const spawned = await until(() => L.enemyList.length > n0, 1500);
-      rec('顶假问号砖会顶出蘑菇陷阱怪', spawned, n0 + ' → ' + L.enemyList.length + ' 只敌人');
-      rec('假道具砖已标记为已使用', fakeQ.hit === true);
-    }
+    const pressKey = (type, keyCode) => window.dispatchEvent(new KeyboardEvent(type, {
+      keyCode, bubbles: true,
+    }));
+    const jumpIntoBox = async (box) => {
+      cat.body.reset(box.obj.x, 12 * TILE);
+      await until(() => cat.body.blocked.down, 800);
+      pressKey('keydown', 32);
+      const hit = await until(() => box.hit || cat.isDead, 800);
+      pressKey('keyup', 32);
+      return hit && box.hit === true;
+    };
 
-    // ---- 12. 真问号砖出道具 ----
+    // ---- 11. 真问号砖出道具 ----
     const coinQ = L.level.tiles.find((t) => t.type === 'question' && !t.hit
       && t.item === 'goldfish');
     const canQ = L.level.tiles.find((t) => t.type === 'question' && !t.hit && t.item === 'can');
     if (coinQ) {
       const c0 = L.coins;
-      L.bumpQuestionBlock(coinQ.obj);
+      await jumpIntoBox(coinQ);
       await wait(200);
       rec('顶真问号砖（金鱼款）会出金鱼', L.coins > c0, '金鱼 ' + c0 + ' → ' + L.coins);
     }
     if (canQ) {
-      // 先站到砖块正上方 —— 罐头是被"顶"出来的，得让猫真的接住它
-      cat.body.reset(canQ.obj.x, canQ.obj.y - TILE);
-      cat.body.setVelocity(0, 0);
-      await until(() => cat.body.blocked.down, 1200);
-      L.bumpQuestionBlock(canQ.obj);
-      const got = await until(() => cat.form === 'big', 3000);
-      rec('顶鱼罐头砖 → 猫变大', got, 'form=' + cat.form);
+      const opened = await jumpIntoBox(canQ);
+      const can = L.itemList.find((item) => item.active && item.collectKind === 'can');
+      const landed = can && await until(() => can.body?.blocked.down && can.body.bottom >= 12 * TILE - 1, 2000);
+      rec('从下方顶开鱼罐头砖，罐头弹落到地面', opened && landed);
+      pressKey('keydown', 39);
+      const got = await until(() => cat.form === 'big' || cat.isDead, 1500);
+      pressKey('keyup', 39);
+      rec('走过去捡起罐头后猫变大', got && cat.form === 'big', 'form=' + cat.form);
+    }
+
+    // ---- 12. 假道具真陷阱 ----
+    const fakeQ = L.level.tiles.find((t) => t.type === 'fakeQuestion');
+    if (fakeQ) {
+      const n0 = L.enemyList.length;
+      await jumpIntoBox(fakeQ);
+      const spawned = await until(() => L.enemyList.length > n0, 1500);
+      rec('顶假问号砖会顶出蘑菇陷阱怪', spawned, n0 + ' → ' + L.enemyList.length + ' 只敌人');
+      rec('假道具砖已标记为已使用', fakeQ.hit === true);
     }
     rescue();
 
@@ -515,14 +528,21 @@ setTimeout(() => {
     const fake = L.goals.find((g) => g.isFake);
     const real = L.goals.find((g) => !g.isFake);
     const tilesBefore = L.solidMap.size;
-    L.cat.setPosition(fake.worldX, fake.baseY - 60);
-    fake.onTouch(L.cat);
-    rec('碰到假旗杆会先"假装过关"', fake.touched === true);
-    const collapsed = await until(() => L.solidMap.size < tilesBefore, 4000);
+    L.cat.body.reset(fake.worldX - 88, fake.baseY);
+    pressKey('keydown', 39);
+    const triggered = await until(() => fake.touched && L.cat.frozen, 1000);
+    rec('走到假旗杆会先"假装过关"', triggered);
+    const released = await until(() => !L.cat.frozen && L.cat.x > fake.worldX - 25, 1800);
+    rec('假通关之后主角恢复可控', released);
+    pressKey('keydown', 32);
+    const escaped = await until(() => L.cat.x > fake.worldX + 85 && L.cat.body.blocked.down, 1500);
+    pressKey('keyup', 32);
+    pressKey('keyup', 39);
+    const collapsed = L.solidMap.size < tilesBefore;
     rec('假旗杆随后会让地面塌陷', collapsed,
         tilesBefore + ' → ' + L.solidMap.size + ' 块实心瓦片');
     rec('假通关陷阱已计入黑名单', !!L.trapLog['fakeGoal']);
-    rec('假通关之后主角恢复可控', L.cat.frozen === false);
+    rec('恢复操作后可以跳过塌陷区', escaped && !L.cat.isDead);
 
     // ---- 15. 真终点 → 结算 ----
     L.cat.setPosition(real.worldX, real.baseY - 60);
@@ -590,6 +610,20 @@ setTimeout(() => {
             ? s.level.tiles.length + ' 块瓦片 / ' + s.enemyList.length + ' 只敌人 / '
               + s.goals.length + ' 个旗杆'
             : '失败');
+      if (id === 2) {
+        const nearBank = 47 * TILE;
+        const farBank = 51 * TILE;
+        s.cat.body.reset(nearBank - 90, 12 * TILE);
+        pressKey('keydown', 39);
+        pressKey('keydown', 16);
+        const approached = await until(() => s.cat.x >= nearBank - 28, 700);
+        pressKey('keydown', 32);
+        const crossed = await until(() => s.cat.x >= farBank && s.cat.body.blocked.down, 1100);
+        pressKey('keyup', 32);
+        pressKey('keyup', 16);
+        pressKey('keyup', 39);
+        rec('第二关原卡点可以助跑跳过并落地', approached && crossed && !s.cat.isDead);
+      }
     }
 
     // ---- 17. 暂停菜单 ----

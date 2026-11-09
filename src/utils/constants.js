@@ -95,6 +95,8 @@ export const TRAP = {
   CONVEYOR_DISTANCE: 5,      // 悄悄下沉的格数
   CONVEYOR_MS: 1100,         // 下沉耗时
   FAKE_GOAL_FAKE_MS: 900,    // "假通关"演出：先假装过关多久
+  FAKE_GOAL_ESCAPE_MS: 350,  // 恢复操作到地板开始塌陷的时间
+  FAKE_GOAL_RADIUS: 1,       // 塌陷范围：旗杆所在列及左右各一列
 };
 
 // ---------------------------------------------------------------------------

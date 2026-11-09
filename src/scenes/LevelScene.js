@@ -520,11 +520,16 @@ export default class LevelScene extends Phaser.Scene {
         yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
       });
     } else {
-      // 从砖块里顶出来的：先向上弹一段，然后自由落体
+      // 弹出后滑离砖排，让玩家能在地面上接到奖励。
       s.body.setAllowGravity(true);
-      s.body.setVelocity(0, -320);
+      s.body.setVelocity(215, -320);
+      s.body.setDragX(110);
       s.body.setSize(24, 24);
       s.body.setOffset((s.width - 24) / 2, (s.height - 24) / 2);
+      const collider = this.physics.add.collider(s, this.solids);
+      s.once('destroy', () => {
+        if (collider.world) collider.destroy();
+      });
     }
     return s;
   }
@@ -584,7 +589,9 @@ export default class LevelScene extends Phaser.Scene {
     const cb = tile.body;
 
     // —— 从下方顶 ——
-    const bumped = body.velocity.y < 0 && body.top >= cb.bottom - 14;
+    // Arcade 调用碰撞回调前已将向上的速度清零，并将猫推回砖块下方。
+    const bumped = body.blocked.up && body.overlapY < 0
+      && Math.abs(body.top - cb.bottom) < 1;
     if (bumped) {
       if (t.hidden) {
         t.handler.reveal();

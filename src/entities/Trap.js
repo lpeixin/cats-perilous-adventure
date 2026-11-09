@@ -409,8 +409,10 @@ export class GoalPole {
     });
 
     this.scene.time.delayedCall(TRAP.FAKE_GOAL_FAKE_MS, () => {
-      // 1) 地板塌陷
-      this.scene.collapseAround(this.worldX, 4);
+      // 恢复操作后给玩家留出反应和起跳的时间，塌陷范围也必须能跳过。
+      this.scene.time.delayedCall(TRAP.FAKE_GOAL_ESCAPE_MS, () => {
+        this.scene.collapseAround(this.worldX, TRAP.FAKE_GOAL_RADIUS);
+      });
       // 2) 旗杆歪倒、沉下去
       this.scene.tweens.add({
         targets: [this.pole, this.flag],

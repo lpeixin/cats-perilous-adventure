@@ -155,10 +155,10 @@ def level1():
     # 地形：7 段草地，中间留 6 个坑
     L.ground(0, 30)
     L.ground(34, 56)
-    L.ground(62, 86)
+    L.ground(62, 87)
     L.ground(92, 116)
-    L.ground(122, 146)
-    L.ground(152, 172)
+    L.ground(122, 147)
+    L.ground(152, 173)
     L.ground(178, 199)
 
     # ---- A 起步区：认识操作，顺便被"隐形墙"友善地提醒一下 ----
@@ -173,9 +173,9 @@ def level1():
     L.invisible(23, 8)
 
     # ---- B 砖块区：真道具 + 第一个"假道具真陷阱" ----
-    L.brick_row(38, 42, 8)
-    L.question(40, 8, "can")
-    L.fake_question(46, 8)
+    L.brick_row(38, 42, 9)
+    L.question(40, 9, "can")
+    L.fake_question(46, 9)
     L.enemy(50, GROUND_ROW - 1, "yarn")
     # 地板消失陷阱：伪装成草地的碎裂地板，横跨 31-33 号坑右边的 57-61 号坑
     L.crumble_bridge(57, 61)
@@ -222,13 +222,13 @@ def level2():
     L = Level(210, name="第二关 · 屋顶与水管", subtitle="这次连地板都不能信了")
 
     L.ground(0, 22)
-    L.ground(28, 44)
-    L.ground(52, 70)
-    L.ground(78, 96)
-    L.ground(104, 126)
-    L.ground(134, 152)
-    L.ground(160, 180)
-    L.ground(188, 209)
+    L.ground(28, 46)
+    L.ground(51, 70)
+    L.ground(78, 97)
+    L.ground(103, 126)
+    L.ground(134, 154)
+    L.ground(159, 182)
+    L.ground(187, 209)
 
     # ---- A 开局：地板消失 + 水管伏兵组合 ----
     L.spawn = (2, GROUND_ROW - 1)
@@ -252,12 +252,12 @@ def level2():
     L.pipe(55, 10, 2)
     L.ambush(55, 10)
     L.pipe(62, 10, 2)
-    L.pipe(66, 9, 3)
-    L.ambush(66, 9)
+    L.pipe(66, 10, 2)
+    L.ambush(66, 10)
     L.enemy(59, GROUND_ROW - 1, "yarn")
     L.coin_row(60, 61, 8)
-    # 管道上方一个假问号砖
-    L.fake_question(70, 7)
+    # 管道旁边一个假问号砖
+    L.fake_question(70, 9)
 
     # ---- D 碎裂地板长廊 ----
     L.crumble_bridge(71, 77)
@@ -278,9 +278,9 @@ def level2():
     L.evil_cloud(118, 3)
     L.crumble_bridge(127, 133)
     L.enemy(138, GROUND_ROW - 1, "yarn")
-    L.brick_row(140, 144, 8)
-    L.fake_question(142, 8)
-    L.coin_row(140, 144, 7)
+    L.brick_row(140, 144, 9)
+    L.fake_question(142, 9)
+    L.coin_row(140, 144, 8)
 
     # ---- G 假通关 + 真终点 ----
     L.evil_sun(148, 2)
@@ -302,13 +302,13 @@ def level3():
 
     L.ground(0, 18)
     L.ground(24, 38)
-    L.ground(46, 60)
-    L.ground(68, 88)
+    L.ground(46, 61)
+    L.ground(67, 88)
     L.ground(96, 112)
     L.ground(120, 138)
     L.ground(146, 164)
-    L.ground(172, 192)
-    L.ground(200, 219)
+    L.ground(172, 194)
+    L.ground(199, 219)
 
     # ---- A 开局即下马威：连续两块伪装草地 ----
     L.spawn = (2, GROUND_ROW - 1)
@@ -341,8 +341,8 @@ def level3():
     L.enemy(72, GROUND_ROW - 1, "mushroom")
     L.enemy(80, GROUND_ROW - 1, "mushroom")
     L.enemy(76, 7, "crow")
-    L.fake_question(74, 8)
-    L.fake_question(82, 8)
+    L.fake_question(74, 9)
+    L.fake_question(82, 9)
     L.item(78, 9, "star")
     L.crumble_bridge(89, 95)
     L.evil_sun(92, 2)
@@ -360,10 +360,10 @@ def level3():
     L.evil_sun(116, 2)
     L.pipe(122, 10, 2)
     L.ambush(122, 10)
-    L.pipe(126, 9, 3)
-    L.ambush(126, 9)
+    L.pipe(126, 10, 2)
+    L.ambush(126, 10)
     L.enemy(132, GROUND_ROW - 1, "yarn")
-    L.fake_question(135, 8)
+    L.fake_question(135, 9)
     L.crumble_bridge(139, 145)
     L.evil_cloud(142, 3)
 
